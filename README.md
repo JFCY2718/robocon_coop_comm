@@ -115,9 +115,31 @@ make demo-cv
 make lint
 make send-led-frame
 
+# MCU pipeline 模拟
+make demo-mcu
+make demo-mcu-check
+
+# 运行全部检查（test + demo-cli-check + demo-mcu-check）
+make test-all
+
 # 生成 LED MCU 串口帧 hex
 python tools/send_led_frame.py --msg-id 4 --seq 1 --brightness 200
 ```
+
+## MCU Pipeline Simulation
+
+在没有真实硬件时，验证 R1 FSM → LED MCU 的完整链路：
+
+```bash
+python -m robocon_coop_comm.demo_mcu_pipeline
+./tools/demo_mcu_pipeline_check.sh
+make demo-mcu-check
+```
+
+`LedMcuSimulator` 模拟 Arduino 固件的帧解析和 LED 输出逻辑。
+后续真实硬件接入时只需替换 transport 和 MCU 固件。
+
+详见 [docs/MCU_PIPELINE_SIM.md](docs/MCU_PIPELINE_SIM.md)。
 
 ## GitHub 推送
 
