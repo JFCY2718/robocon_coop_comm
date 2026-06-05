@@ -120,7 +120,7 @@ def draw_virtual_beacon(msg_id: int, seq: int, layout: BeaconLayout = DEFAULT_LA
     cv2.putText(
         img,
         f"msg_id={msg_id} seq={seq}",
-        (layout.board_left + 34, layout.board_bottom - 18),
+        (layout.board_left + 34, layout.board_bottom + 32),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.75,
         (255, 255, 255),

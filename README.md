@@ -47,7 +47,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -U pip
 pip install -e ".[dev,vision]"
-pytest -q
+./tools/test.sh
 ```
 
 运行命令行闭环：
@@ -74,6 +74,38 @@ ros2 run robocon_coop_comm r1_fsm_node
 ```
 
 当前 ROS2 节点用 `std_msgs/String` 传 JSON，先避免自定义 msg 增加开发负担。
+
+## 当前开发状态
+
+1. 已完成纯 Python 协议（`protocol.py`）
+2. 已完成 R1/R2 状态机（`r1_fsm.py` / `r2_fsm.py`）
+3. 已完成虚拟 LED 信标图像（`beacon_image.py`）
+4. 已完成 R2 虚拟解码（`demo_cv.py`）
+5. 已完成 MCU 串口帧编码/解码（`serial_frame.py`）
+6. 后续将接真实 LED、MCU、摄像头、遥控器
+
+## 常用命令
+
+```bash
+# 运行全部单元测试
+./tools/test.sh
+
+# 运行 demo_cli 自动检查
+./tools/demo_cli_check.sh
+
+# 命令行闭环演示（交互式）
+python -m robocon_coop_comm.demo_cli
+
+# OpenCV 虚拟信标窗口演示
+python -m robocon_coop_comm.demo_cv
+
+# Makefile 快捷方式
+make test
+make demo-cli-check
+make demo-cli
+make demo-cv
+make lint
+```
 
 ## GitHub 推送
 
