@@ -152,6 +152,20 @@ make demo-r2-vision-check
 
 详见 [docs/R2_VISION_PIPELINE.md](docs/R2_VISION_PIPELINE.md)。
 
+## Dojo End-to-End Pipeline
+
+武馆组装阶段 R1/R2 通讯的完整软件闭环：
+操作手输入 → R1 FSM → LED MCU → 虚拟信标图像 → 视觉解码 → R2 FSM。
+不使用无线通信，不使用接触式通信，操作手只请求 R1 状态，R2 自主决策动作。
+
+```bash
+python -m robocon_coop_comm.demo_dojo_end_to_end
+./tools/demo_dojo_end_to_end_check.sh
+make demo-dojo-check
+```
+
+详见 [docs/DOJO_END_TO_END.md](docs/DOJO_END_TO_END.md)。
+
 ## MCU Pipeline Simulation
 
 在没有真实硬件时，验证 R1 FSM → LED MCU 的完整链路：
