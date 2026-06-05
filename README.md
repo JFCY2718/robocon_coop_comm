@@ -126,6 +126,19 @@ make test-all
 python tools/send_led_frame.py --msg-id 4 --seq 1 --brightness 200
 ```
 
+## Operator Input Pipeline
+
+操作手输入抽象层：键盘 → OperatorSession → OperatorCommand → R1 FSM → LED MCU。
+该层只向 R1 状态机发请求，不直接控制 R2，不直接控制 LED。
+
+```bash
+python -m robocon_coop_comm.demo_operator_pipeline
+./tools/demo_operator_pipeline_check.sh
+make demo-operator-check
+```
+
+详见 [docs/OPERATOR_INPUT.md](docs/OPERATOR_INPUT.md)。
+
 ## MCU Pipeline Simulation
 
 在没有真实硬件时，验证 R1 FSM → LED MCU 的完整链路：

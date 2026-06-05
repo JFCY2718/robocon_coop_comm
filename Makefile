@@ -1,4 +1,4 @@
-.PHONY: test demo-cli demo-cv demo-cli-check lint send-led-frame demo-mcu demo-mcu-check test-all
+.PHONY: test demo-cli demo-cv demo-cli-check lint send-led-frame demo-mcu demo-mcu-check demo-operator demo-operator-check test-all
 
 test:
 	./tools/test.sh
@@ -24,4 +24,10 @@ demo-mcu:
 demo-mcu-check:
 	./tools/demo_mcu_pipeline_check.sh
 
-test-all: test demo-cli-check demo-mcu-check
+demo-operator:
+	python -m robocon_coop_comm.demo_operator_pipeline
+
+demo-operator-check:
+	./tools/demo_operator_pipeline_check.sh
+
+test-all: test demo-cli-check demo-mcu-check demo-operator-check
