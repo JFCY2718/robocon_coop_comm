@@ -25,10 +25,15 @@ robocon_coop_comm/
 │   ├── protocol.py              # msg_id、LED 编码、校验
 │   ├── r1_fsm.py                # R1 任务状态机
 │   ├── r2_fsm.py                # R2 简化状态机
+│   ├── serial_frame.py          # MCU 串口帧编解码
+│   ├── serial_transport.py      # 串口传输抽象（内存/pyserial）
+│   ├── led_mcu_client.py        # LED MCU 客户端
 │   ├── beacon_image.py          # 虚拟 LED 信标图像生成/解码
 │   ├── demo_cli.py              # 无图形命令行闭环演示
 │   ├── demo_cv.py               # OpenCV 虚拟信标窗口演示
 │   └── ros_nodes/               # ROS2 Humble 可选节点
+├── firmware/
+│   └── led_beacon_mcu/          # LED MCU Arduino 固件骨架
 ├── test/                        # pytest 单元测试
 ├── docs/                        # 协议、架构、路线图
 ├── tools/                       # Ubuntu/GitHub 辅助脚本
@@ -82,7 +87,10 @@ ros2 run robocon_coop_comm r1_fsm_node
 3. 已完成虚拟 LED 信标图像（`beacon_image.py`）
 4. 已完成 R2 虚拟解码（`demo_cv.py`）
 5. 已完成 MCU 串口帧编码/解码（`serial_frame.py`）
-6. 后续将接真实 LED、MCU、摄像头、遥控器
+6. 已完成串口传输抽象层（`serial_transport.py`）
+7. 已完成 LED MCU 客户端（`led_mcu_client.py`）
+8. 已完成 MCU 固件骨架（`firmware/led_beacon_mcu/`）
+9. 后续将接真实 LED、MCU、摄像头、遥控器
 
 ## 常用命令
 
@@ -105,6 +113,10 @@ make demo-cli-check
 make demo-cli
 make demo-cv
 make lint
+make send-led-frame
+
+# 生成 LED MCU 串口帧 hex
+python tools/send_led_frame.py --msg-id 4 --seq 1 --brightness 200
 ```
 
 ## GitHub 推送

@@ -1,4 +1,4 @@
-.PHONY: test demo-cli demo-cv demo-cli-check lint
+.PHONY: test demo-cli demo-cv demo-cli-check lint send-led-frame
 
 test:
 	./tools/test.sh
@@ -14,3 +14,6 @@ demo-cli-check:
 
 lint:
 	ruff check .
+
+send-led-frame:
+	python tools/send_led_frame.py --msg-id 4 --seq 1 --brightness 200
