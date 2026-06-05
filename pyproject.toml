@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "robocon_coop_comm"
+version = "0.1.0"
+description = "ROBOCON 2026 R1/R2 cooperative optical communication simulation and ROS2 bridge"
+requires-python = ">=3.10"
+authors = [{name = "ROBOCON Team"}]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "ruff>=0.4.0"]
+vision = ["numpy>=1.21", "opencv-python>=4.5"]
+
+[project.scripts]
+robocon-demo-cli = "robocon_coop_comm.demo_cli:main"
+robocon-demo-cv = "robocon_coop_comm.demo_cv:main"
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
