@@ -1,4 +1,4 @@
-.PHONY: test demo-cli demo-cv demo-cli-check lint send-led-frame demo-mcu demo-mcu-check demo-operator demo-operator-check demo-r2-vision demo-r2-vision-check demo-dojo demo-dojo-check test-all
+.PHONY: test demo-cli demo-cv demo-cli-check lint send-led-frame demo-mcu demo-mcu-check demo-operator demo-operator-check demo-r2-vision demo-r2-vision-check demo-dojo demo-dojo-check benchmark benchmark-check test-all
 
 test:
 	./tools/test.sh
@@ -42,4 +42,10 @@ demo-dojo:
 demo-dojo-check:
 	./tools/demo_dojo_end_to_end_check.sh
 
-test-all: test demo-cli-check demo-mcu-check demo-operator-check demo-r2-vision-check demo-dojo-check
+benchmark:
+	python -m robocon_coop_comm.demo_benchmark --iterations 100
+
+benchmark-check:
+	./tools/demo_benchmark_check.sh
+
+test-all: test demo-cli-check demo-mcu-check demo-operator-check demo-r2-vision-check demo-dojo-check benchmark-check

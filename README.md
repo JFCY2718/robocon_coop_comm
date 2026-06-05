@@ -181,6 +181,19 @@ make demo-mcu-check
 
 详见 [docs/MCU_PIPELINE_SIM.md](docs/MCU_PIPELINE_SIM.md)。
 
+## Performance Benchmark
+
+端到端 pipeline 延迟测量：从操作手请求到 R2 状态变化的软件链路耗时。
+当前用于纯软件端到端链路，后续真实硬件接入后继续使用 TraceRecorder 对比延迟。
+
+```bash
+python -m robocon_coop_comm.demo_benchmark --iterations 100
+./tools/demo_benchmark_check.sh
+make benchmark-check
+```
+
+详见 [docs/PERFORMANCE_BENCHMARK.md](docs/PERFORMANCE_BENCHMARK.md)。
+
 ## GitHub 推送
 
 方式一：GitHub CLI：
