@@ -15,6 +15,21 @@ jobs:
       - name: Install
         run: |
           python -m pip install -U pip
-          pip install -e ".[dev]"
-      - name: Test
-        run: pytest -q
+          pip install -e ".[dev,vision]"
+      - name: Run all checks
+        run: |
+          export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
+          ./tools/test.sh
+          ./tools/demo_cli_check.sh
+          ./tools/demo_mcu_pipeline_check.sh
+          ./tools/demo_operator_pipeline_check.sh
+          ./tools/demo_r2_vision_pipeline_check.sh
+          ./tools/demo_dojo_end_to_end_check.sh
+          ./tools/demo_benchmark_check.sh
+          make send-led-frame
+          make demo-mcu-check
+          make demo-operator-check
+          make demo-r2-vision-check
+          make demo-dojo-check
+          make benchmark-check
+          ruff check .

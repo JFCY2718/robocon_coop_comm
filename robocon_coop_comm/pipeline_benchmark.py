@@ -2,6 +2,8 @@
 
 Wraps DojoEndToEndPipeline with TraceRecorder for performance measurement.
 This is a MEASUREMENT tool, not a control tool.
+
+Supports warmup iterations to separate cold-start from steady-state latency.
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ from .trace_events import TraceRecorder
 class BenchmarkResult:
     """Result of running multiple pipeline iterations."""
 
+    # Legacy fields (kept for backward compatibility)
     iterations: int
     total_ms: float
     avg_ms: float
@@ -23,6 +26,15 @@ class BenchmarkResult:
     max_ms: float
     p95_ms: float
     successful_iterations: int
+
+    # Warmup fields
+    warmup_iterations: int = 0
+    measured_iterations: int = 0
+    cold_start_ms: float | None = None
+    warm_avg_ms: float | None = None
+    warm_min_ms: float | None = None
+    warm_max_ms: float | None = None
+    warm_p95_ms: float | None = None
 
 
 # The sequence of dojo steps to execute
@@ -72,46 +84,73 @@ def run_dojo_pipeline_once() -> tuple[list[DojoStepResult], TraceRecorder]:
     return results, recorder
 
 
-def benchmark_dojo_pipeline(iterations: int = 100) -> BenchmarkResult:
+def _run_one_and_get_duration() -> float | None:
+    """Run one pipeline iteration. Returns duration_ms or None on failure."""
+    try:
+        results, recorder = run_dojo_pipeline_once()
+        if results and results[-1].r1_msg_id == 7:
+            return recorder.duration_ms("operator_command", "dojo_step_complete")
+    except Exception:
+        pass
+    return None
+
+
+def _compute_stats(durations: list[float]) -> tuple[float, float, float, float, float]:
+    """Compute (total, avg, min, max, p95) from a sorted list of durations."""
+    if not durations:
+        return 0.0, 0.0, 0.0, 0.0, 0.0
+    durations.sort()
+    total = sum(durations)
+    p95_idx = min(int(len(durations) * 0.95), len(durations) - 1)
+    return total, total / len(durations), durations[0], durations[-1], durations[p95_idx]
+
+
+def benchmark_dojo_pipeline(
+    iterations: int = 100,
+    warmup_iterations: int = 1,
+) -> BenchmarkResult:
     """Run the full dojo pipeline multiple times and collect timing stats.
 
     Args:
-        iterations: number of full pipeline runs.
+        iterations: number of measured pipeline runs.
+        warmup_iterations: number of warmup runs (not counted in stats).
+            The first warmup run's duration is recorded as cold_start_ms.
 
     Returns:
         BenchmarkResult with timing statistics.
     """
+    # Warmup phase
+    cold_start: float | None = None
+    for i in range(warmup_iterations):
+        d = _run_one_and_get_duration()
+        if i == 0 and d is not None:
+            cold_start = d
+
+    # Measured phase
     durations: list[float] = []
     successful = 0
-
     for _ in range(iterations):
-        try:
-            results, recorder = run_dojo_pipeline_once()
-            # Check that we reached the final state
-            if results and results[-1].r1_msg_id == 7:
-                duration = recorder.duration_ms("operator_command", "dojo_step_complete")
-                durations.append(duration)
-                successful += 1
-        except Exception:
-            pass
+        d = _run_one_and_get_duration()
+        if d is not None:
+            durations.append(d)
+            successful += 1
 
-    if not durations:
-        return BenchmarkResult(
-            iterations=iterations, total_ms=0.0, avg_ms=0.0,
-            min_ms=0.0, max_ms=0.0, p95_ms=0.0,
-            successful_iterations=0,
-        )
+    total, avg, mn, mx, p95 = _compute_stats(list(durations))
 
-    durations.sort()
-    total = sum(durations)
-    p95_idx = min(int(len(durations) * 0.95), len(durations) - 1)
-
+    # Legacy fields: keep measured data as the primary values
     return BenchmarkResult(
         iterations=iterations,
         total_ms=total,
-        avg_ms=total / len(durations),
-        min_ms=durations[0],
-        max_ms=durations[-1],
-        p95_ms=durations[p95_idx],
+        avg_ms=avg,
+        min_ms=mn,
+        max_ms=mx,
+        p95_ms=p95,
         successful_iterations=successful,
+        warmup_iterations=warmup_iterations,
+        measured_iterations=iterations,
+        cold_start_ms=cold_start,
+        warm_avg_ms=avg,
+        warm_min_ms=mn,
+        warm_max_ms=mx,
+        warm_p95_ms=p95,
     )

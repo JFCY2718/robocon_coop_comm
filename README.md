@@ -187,10 +187,18 @@ make demo-mcu-check
 当前用于纯软件端到端链路，后续真实硬件接入后继续使用 TraceRecorder 对比延迟。
 
 ```bash
-python -m robocon_coop_comm.demo_benchmark --iterations 100
-./tools/demo_benchmark_check.sh
+# 基本 benchmark（warmup + 测量）
+python -m robocon_coop_comm.demo_benchmark --iterations 100 --warmup-iterations 1
+
+# 导出 Chrome Trace JSON（可用 chrome://tracing 或 Perfetto 查看）
+python -m robocon_coop_comm.demo_benchmark --iterations 20 --warmup-iterations 1 --trace-out /tmp/robocon_trace.json
+
+make benchmark
+make benchmark-trace
 make benchmark-check
 ```
+
+CI 会自动运行 `make benchmark-check`。benchmark 结果是软件仿真延迟，不等同于真实硬件延迟。
 
 详见 [docs/PERFORMANCE_BENCHMARK.md](docs/PERFORMANCE_BENCHMARK.md)。
 
