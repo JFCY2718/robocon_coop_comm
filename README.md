@@ -139,6 +139,19 @@ make demo-operator-check
 
 详见 [docs/OPERATOR_INPUT.md](docs/OPERATOR_INPUT.md)。
 
+## R2 Vision Pipeline
+
+R2 端视觉解码 pipeline：虚拟信标图像 → BeaconDecoder → BeaconStabilizer → R2 FSM。
+当前使用虚拟图像，后续替换为 USB 摄像头 + AprilTag/LED ROI，R2 FSM 保持不变。
+
+```bash
+python -m robocon_coop_comm.demo_r2_vision_pipeline
+./tools/demo_r2_vision_pipeline_check.sh
+make demo-r2-vision-check
+```
+
+详见 [docs/R2_VISION_PIPELINE.md](docs/R2_VISION_PIPELINE.md)。
+
 ## MCU Pipeline Simulation
 
 在没有真实硬件时，验证 R1 FSM → LED MCU 的完整链路：
