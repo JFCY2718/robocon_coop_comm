@@ -5,8 +5,40 @@ ROBOCON 2026「武林探秘」R1/R2 两机协作通信项目。
 **通信方案：AprilTag 定位 + LED 二进制光码。**
 R1 通过 LED 光码板发出状态信号，R2 通过摄像头 + AprilTag 检测解码。
 
-> 📌 **当前阶段**：软件协议与状态机已完成，STM32F103 串口链路已实机验证通过。
+> 📌 **当前状态（2026-06-17）**：
+> - ✅ 软件协议与状态机已完成
+> - ✅ STM32F103 + 三灯串口闭环已实机验证通过，ACK 正常
+> - ✅ Hikrobot 三灯识别脚本已有
+> - 🔜 六灯 REF/SEQ/PAR 为下一阶段扩展（代码已预留，固件已定义）
 > 纯软件闭环可以直接跑，真实硬件替换上层接口不变。
+>
+> 仓库包含两部分：
+> - 🐍 **Python 上位机** — R1/R2 状态机、协议编解码、操作手输入、虚拟信标、benchmark
+> - 🔌 **STM32F103 C 固件** — LED 光码板 MCU 裸寄存器固件（USART1 串口帧 → LED + ACK）
+
+---
+
+## 仓库构成
+
+| 部分 | 位置 | 说明 |
+|------|------|------|
+| Python 控制端 | `robocon_coop_comm/` `tools/` | R1 逻辑、状态机、协议、串口帧发送 |
+| STM32 固件 | `firmware/stm32f103_beacon_baremetal/` | LED Beacon MCU 裸寄存器 C 固件 |
+| Arduino 固件骨架 | `firmware/led_beacon_mcu/` | Arduino 参考实现 |
+
+### 快速测试（完整链路）
+
+```bash
+# 1. 烧录固件到 STM32F103（用 STM32CubeProgrammer 或 OpenOCD）
+#    固件路径: firmware/stm32f103_beacon_baremetal/main.c
+
+# 2. 激活 Python 环境
+source .venv/bin/activate
+
+# 3. 发一帧验证
+python tools/r1_beacon_control.py --port /dev/ttyACM0 --command insert
+# 期望: ack=CC 04 01, STM32 上 D2 LED 亮
+```
 
 ---
 
@@ -79,7 +111,9 @@ python tools/r1_beacon_control.py --port /dev/ttyACM0 --command insert
 |------|------|
 | STM32F103C8T6 (Blue Pill) | LED 光码 MCU，接收 USART1 串口帧 |
 | ST-LINK/V2.1 | 烧录器 + USB 虚拟串口 (VCP)，系统枚举为 `/dev/ttyACM0` |
-| 3× 高亮 LED + 限流电阻 | D0/D1/D2 三灯信标 |
+| 3× 高亮 LED + 限流电阻 | D0/D1/D2 **三灯信标（✅ 已实机验证）** |
+| 3× LED（REF/SEQ/PAR） | **六灯模式下一阶段扩展**（引脚 PA3/PA4/PA5 已预留） |
+| Hikrobot 相机 | 三灯识别测试脚本已有（`tools/hikrobot_3led_live.py`） |
 
 ### 引脚接线
 
@@ -164,7 +198,11 @@ robocon_coop_comm/
 │   ├── demo_benchmark.py        # benchmark 入口
 │   └── ros_nodes/               # ROS2 Humble 可选节点
 ├── firmware/
-│   └── led_beacon_mcu/          # STM32/Arduino LED MCU 固件
+│   ├── stm32f103_beacon_baremetal/  # ✅ STM32F103 裸寄存器 C 固件（已实机验证）
+│   │   ├── main.c                   #   固件源码
+│   │   ├── README.md                #   烧录/接线说明
+│   │   └── PROTOCOL.md              #   串口协议文档
+│   └── led_beacon_mcu/              # Arduino MCU 固件骨架（参考实现）
 ├── test/                        # pytest 单元测试 (188+)
 ├── docs/                        # 协议、架构、硬件文档
 ├── tools/                       # 开发/调试辅助脚本
