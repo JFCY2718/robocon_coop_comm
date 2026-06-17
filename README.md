@@ -90,13 +90,24 @@ ros2 run robocon_coop_comm r1_fsm_node
 6. 已完成串口传输抽象层（`serial_transport.py`）
 7. 已完成 LED MCU 客户端（`led_mcu_client.py`）
 8. 已完成 MCU 固件骨架（`firmware/led_beacon_mcu/`）
-9. 后续将接真实 LED、MCU、摄像头、遥控器
+9. ✅ STM32F103C8T6 + ST-LINK/V2.1 串口链路已实机验证通过
+10. ✅ R1 Beacon 串口控制台 (`tools/r1_beacon_control.py`) 已完成
+11. 后续将接真实 LED、MCU、摄像头、遥控器
 
 ## 常用命令
 
 ```bash
 # 运行全部单元测试
 ./tools/test.sh
+
+# R1 Beacon 串口控制台（交互式）
+python tools/r1_beacon_control.py --port /dev/ttyACM0
+
+# R1 Beacon 一次发送（dry-run）
+python tools/r1_beacon_control.py --dry-run --command insert
+
+# 发送 LED MCU 串口帧（单帧）
+python tools/send_3led_msg.py --port /dev/ttyACM0 --msg-id 4 --seq 1 --brightness 200
 
 # 运行 demo_cli 自动检查
 ./tools/demo_cli_check.sh

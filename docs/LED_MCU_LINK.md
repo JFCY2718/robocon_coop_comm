@@ -32,12 +32,79 @@ R2 摄像头识别
 不违反 R1/R2 不得无线通信的规则。
 武馆组装阶段仍然没有 R1/R2 直接接触通信。
 
+## ✅ 已验证硬件 (2026-06-17)
+
+以下硬件已经通过实机串口帧收发验证：
+
+| 硬件 | 说明 |
+|------|------|
+| STM32F103C8T6 (Blue Pill) | MCU 端，USART1 接收帧并返回 ACK |
+| ST-LINK/V2.1 | 烧录器 + USB 虚拟串口 (VCP) |
+| /dev/ttyACM0 | 系统枚举的串口设备 |
+
+### 引脚接线
+
+**三灯接线：**
+
+| STM32 GPIO | 连接 |
+|------------|------|
+| PA0 | → 电阻 → D0 LED 长脚，短脚 → GND |
+| PA1 | → 电阻 → D1 LED 长脚，短脚 → GND |
+| PA2 | → 电阻 → D2 LED 长脚，短脚 → GND |
+| PA3 | REF，预留 |
+| PA4 | SEQ，预留 |
+| PA5 | PAR，预留 |
+
+**串口接线：**
+
+| ST-LINK | STM32 |
+|---------|-------|
+| TX | PA10 / USART1_RX |
+| RX | PA9 / USART1_TX |
+| GND | GND |
+
+### 已验证测试命令
+
+发送单帧并验证 ACK：
+
+```bash
+python tools/send_3led_msg.py --port /dev/ttyACM0 --msg-id 4 --seq 1 --brightness 200
+```
+
+期望输出：
+```
+frame=AA 55 04 01 C8 CD
+ack=CC 04 01
+```
+
+### 已验证命令集
+
+| 命令 | msg_id | 帧 | ACK |
+|------|--------|-----|-----|
+| `msg_id=1` | HOLD | AA 55 01 00 C8 C9 | CC 01 00 |
+| `msg_id=2` | R1_ROD_CLAMPED | AA 55 02 01 C8 CB | CC 02 01 |
+| `msg_id=4` | INSERT_ALLOWED | AA 55 04 01 C8 CD | CC 04 01 |
+| `msg_id=7` | R1_IN_MF | AA 55 07 00 C8 CF | CC 07 00 |
+
+### R1 Beacon 交互控制
+
+```bash
+# 交互模式
+python tools/r1_beacon_control.py --port /dev/ttyACM0
+
+# 单次发送
+python tools/r1_beacon_control.py --port /dev/ttyACM0 --command insert
+python tools/r1_beacon_control.py --dry-run --command insert
+```
+
+交互输入命令：`hold` `rod` `pose` `insert` `locked` `clear` `mf`
+
 ## 推荐硬件
 
 | 硬件 | 说明 |
 |------|------|
 | Raspberry Pi Pico / RP2040 | 低成本，USB CDC，多 PWM 引脚 |
-| STM32F103C8T6 (Blue Pill) | 工业级，丰富外设 |
+| STM32F103C8T6 (Blue Pill) ✅ 已验证 | 工业级，丰富外设 |
 | Arduino Nano | 简单易用，USB 转串口 |
 | ESP32 | **仅在关闭 Wi-Fi / Bluetooth 时**作为普通 MCU 使用 |
 
