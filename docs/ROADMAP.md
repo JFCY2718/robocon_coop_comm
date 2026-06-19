@@ -51,6 +51,16 @@ python -m robocon_coop_comm.demo_cv
 - 在矫正图中读取 LED ROI。
 - 1.5m、±45°、100 次切换误码为 0。
 
+### M3-1：真实相机 provider 抽取 / 可测试 pipeline ✅
+
+- ✅ `HikrobotFrameProvider` — 从 `tools/hikrobot_3led_live.py` 抽取相机生命周期管理
+- ✅ `ThreeLedRoiDecoder` — 3-LED ROI 采样 + SEQ 跟踪 + 8-LED 协议兼容
+- ✅ `FakeFrameProvider` — 无 SDK 测试用假帧提供器
+- ✅ `FrameLogger` — CSV/JSONL 调试日志输出
+- ✅ `tools/hikrobot_3led_live.py` 保留为薄 CLI wrapper
+- ✅ pipeline：HikrobotFrameProvider → ThreeLedRoiDecoder → BeaconStabilizer → R2 FSM
+- ✅ 测试覆盖 roi_mean、decode_3led_from_frame、FakeFrameProvider、ThreeLedRoiDecoder、FrameLogger
+
 ## M4：ROS2 集成
 
 目标：

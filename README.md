@@ -5,10 +5,10 @@ ROBOCON 2026「武林探秘」R1/R2 两机协作通信项目。
 **通信方案：AprilTag 定位 + LED 二进制光码。**
 R1 通过 LED 光码板发出状态信号，R2 通过摄像头 + AprilTag 检测解码。
 
-> 📌 **当前状态（2026-06-17）**：
+> 📌 **当前状态（2026-06-19）**：
 > - ✅ 软件协议与状态机已完成
 > - ✅ STM32F103 + 三灯串口闭环已实机验证通过，ACK 正常
-> - ✅ Hikrobot 三灯识别脚本已有
+> - ✅ M3-1：Hikrobot 三灯识别已工程化（FrameProvider + RoiDecoder + FakeProvider + FrameLogger）
 > - 🔜 六灯 REF/SEQ/PAR 为下一阶段扩展（代码已预留，固件已定义）
 > 纯软件闭环可以直接跑，真实硬件替换上层接口不变。
 >
@@ -113,7 +113,7 @@ python tools/r1_beacon_control.py --port /dev/ttyACM0 --command insert
 | ST-LINK/V2.1 | 烧录器 + USB 虚拟串口 (VCP)，系统枚举为 `/dev/ttyACM0` |
 | 3× 高亮 LED + 限流电阻 | D0/D1/D2 **三灯信标（✅ 已实机验证）** |
 | 3× LED（REF/SEQ/PAR） | **六灯模式下一阶段扩展**（引脚 PA3/PA4/PA5 已预留） |
-| Hikrobot 相机 | 三灯识别测试脚本已有（`tools/hikrobot_3led_live.py`） |
+| Hikrobot 相机 | 三灯识别 ✅ 已工程化（`HikrobotFrameProvider` + `ThreeLedRoiDecoder`） |
 
 ### 引脚接线
 
@@ -182,6 +182,9 @@ robocon_coop_comm/
 │   ├── beacon_stabilizer.py     # 解码结果稳定化
 │   ├── beacon_frame_provider.py # 帧提供器抽象
 │   ├── beacon_types.py          # 信标类型定义
+│   ├── hikrobot_frame_provider.py # ✅ Hikrobot 真实相机帧提供器 + 3-LED 解码器
+│   ├── fake_frame_provider.py   # ✅ 测试用假帧提供器（无 SDK）
+│   ├── frame_logger.py          # ✅ CSV/JSONL 帧调试日志
 │   ├── operator_command.py      # 操作手命令抽象层
 │   ├── operator_session.py      # 操作手会话管理
 │   ├── keyboard_operator.py     # 键盘操作手输入
@@ -203,7 +206,7 @@ robocon_coop_comm/
 │   │   ├── README.md                #   烧录/接线说明
 │   │   └── PROTOCOL.md              #   串口协议文档
 │   └── led_beacon_mcu/              # Arduino MCU 固件骨架（参考实现）
-├── test/                        # pytest 单元测试 (188+)
+├── test/                        # pytest 单元测试 (215+)
 ├── docs/                        # 协议、架构、硬件文档
 ├── tools/                       # 开发/调试辅助脚本
 ├── .github/workflows/           # GitHub Actions CI
@@ -253,6 +256,10 @@ python tools/send_led_frame.py --msg-id 4 --seq 1 --brightness 200
 
 # 关闭 LED
 python tools/send_3led_msg.py --port /dev/ttyACM0 --msg-id 0 --seq 0 --brightness 0
+
+# Hikrobot 三灯实时解码（需相机 + SDK）
+python tools/hikrobot_3led_live.py
+python tools/hikrobot_3led_live.py --threshold 100 --log /tmp/beacon.csv
 ```
 
 ### 交互控制台命令
@@ -352,6 +359,7 @@ COMMAND_MAP: dict[str, MsgID] = {
 | [LED_MCU_LINK.md](docs/LED_MCU_LINK.md) | LED MCU 链路与硬件接线 ✅ |
 | [OPERATOR_INPUT.md](docs/OPERATOR_INPUT.md) | 操作手输入抽象层 |
 | [R2_VISION_PIPELINE.md](docs/R2_VISION_PIPELINE.md) | R2 视觉解码 pipeline |
+| [HIKROBOT_REAL_CAMERA.md](docs/HIKROBOT_REAL_CAMERA.md) | Hikrobot 真实相机调试 ✅ |
 | [DOJO_END_TO_END.md](docs/DOJO_END_TO_END.md) | 武馆端到端 pipeline |
 | [MCU_PIPELINE_SIM.md](docs/MCU_PIPELINE_SIM.md) | MCU pipeline 模拟 |
 | [PERFORMANCE_BENCHMARK.md](docs/PERFORMANCE_BENCHMARK.md) | 性能 benchmark |

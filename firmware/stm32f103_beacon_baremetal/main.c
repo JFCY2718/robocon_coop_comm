@@ -189,7 +189,7 @@ static void leds_update(uint8_t msg_id, uint8_t seq)
     led_d0  = (msg_id >> 0) & 1;
     led_d1  = (msg_id >> 1) & 1;
     led_d2  = (msg_id >> 2) & 1;
-    led_ref = 1;
+    led_ref = (msg_id == 0) ? 0 : 1;
     led_seq = seq & 1;
     led_par = led_d0 ^ led_d1 ^ led_d2 ^ led_seq;
     leds_apply();
