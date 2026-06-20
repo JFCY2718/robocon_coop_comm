@@ -5,11 +5,15 @@ ROBOCON 2026「武林探秘」R1/R2 两机协作通信项目。
 **通信方案：AprilTag 定位 + LED 二进制光码。**
 R1 通过 LED 光码板发出状态信号，R2 通过摄像头 + AprilTag 检测解码。
 
-> 📌 **当前状态（2026-06-19）**：
-> - ✅ 软件协议与状态机已完成
+> 📌 **当前状态（2026-06-20）**：
+> - ✅ 软件协议与状态机已完成 (484 tests passed)
 > - ✅ STM32F103 + 三灯串口闭环已实机验证通过，ACK 正常
-> - ✅ M3-1：Hikrobot 三灯识别已工程化（FrameProvider + RoiDecoder + FakeProvider + FrameLogger）
-> - 🔜 六灯 REF/SEQ/PAR 为下一阶段扩展（代码已预留，固件已定义）
+> - ✅ M3-1：Hikrobot 三灯识别已工程化
+> - ✅ M3-2：AprilTag 检测 + 透视矫正 + LED ROI 自动采样（软件）
+> - ✅ M3-4：R2 FSM HOLD/ERROR 安全门控已修复
+> - ✅ M3-5：六灯 ROI 识别 + PatternMapper + 实时工具（软件）
+> - ⚠️ 六灯 + Hikrobot 相机实机尚未验收
+> - ⚠️ 当前不接 FSM 真实动作，只验证 LED bitmask 识别
 > 纯软件闭环可以直接跑，真实硬件替换上层接口不变。
 >
 > 仓库包含两部分：

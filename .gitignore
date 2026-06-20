@@ -22,3 +22,9 @@ log/
 # Local secrets
 .env
 *.key
+
+# SixLED hardware test data — keep configs, ignore runtime artifacts
+data/sixled/logs/*
+!data/sixled/logs/.gitkeep
+data/sixled/frames/*
+!data/sixled/frames/.gitkeep

@@ -1,0 +1,22 @@
+{
+  "description": "Hikrobot 6-LED ROI calibration — example (placeholder coordinates).  Replace with real values after running hikrobot_6led_live.py calibration.",
+  "led_order": ["D0", "D1", "D2", "REF", "SEQ", "PAR"],
+  "bitmask_mapping": {
+    "D0": 0,
+    "D1": 1,
+    "D2": 2,
+    "REF": 3,
+    "SEQ": 4,
+    "PAR": 5
+  },
+  "roi_size": 24,
+  "threshold": 120,
+  "points": {
+    "D0": [320, 400],
+    "D1": [370, 400],
+    "D2": [420, 400],
+    "REF": [470, 400],
+    "SEQ": [520, 400],
+    "PAR": [570, 400]
+  }
+}

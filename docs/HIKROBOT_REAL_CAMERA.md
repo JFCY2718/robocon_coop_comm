@@ -167,6 +167,96 @@ python -m robocon_coop_comm.demo_cv
 
 仅在 `import HikrobotFrameProvider` 或调用 `provider.open()` 时才会尝试加载 MVS SDK。
 
+## 6-LED 实测 (smoke test)
+
+6-LED 模式使用全部六颗 LED：D0, D1, D2, REF, SEQ, PAR。
+
+### 前置条件
+
+- STM32 已烧录六灯测试固件
+- Hikrobot 相机已连接
+- Hikrobot MVS SDK 环境变量已设置
+
+### LED 顺序与 bitmask 映射
+
+```
+点击顺序:  D0  D1  D2  REF  SEQ  PAR
+bit 位:    bit0 bit1 bit2 bit3 bit4 bit5
+```
+
+### 实测操作步骤
+
+```bash
+# 1. 确认相机出图 (MVS 客户端)
+
+# 2. STM32 六灯全灭 → 验证 bitmask = 000000 = 0x00
+# 3. STM32 六灯全亮 → 验证 bitmask = 111111 = 0x3F
+
+# 4. 单灯轮流测试:
+#    D0 亮 → 000001 = 0x01
+#    D1 亮 → 000010 = 0x02
+#    D2 亮 → 000100 = 0x04
+#    REF 亮 → 001000 = 0x08
+#    SEQ 亮 → 010000 = 0x10
+#    PAR 亮 → 100000 = 0x20
+
+# 5. 启动六灯实时工具 (交互式标定)
+python tools/hikrobot_6led_live.py
+
+# 6. 按顺序点击 D0 D1 D2 REF SEQ PAR LED 中心位置
+#    观察 bitmask 和 bit value 是否与预期一致
+
+# 7. 保存 ROI 标定
+#    按键 's' 保存到默认路径，或:
+python tools/hikrobot_6led_live.py --save-roi data/sixled/configs/my_roi.json
+
+# 8. 使用已标定的 ROI 运行 + 记录日志
+python tools/hikrobot_6led_live.py \
+    --roi-file data/sixled/configs/my_roi.json \
+    --log data/sixled/logs/run.csv \
+    --protocol
+
+# 9. 分析日志
+python tools/sixled_log_summary.py data/sixled/logs/run.csv
+python tools/sixled_log_summary.py data/sixled/logs/run.jsonl --json
+
+# 10. 不依赖相机验证
+python tools/hikrobot_6led_live.py --help
+pytest test/test_six_led_decoder.py test/test_sixled_log_summary.py -q
+```
+
+### 6-LED 工具参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--roi-file` | (无) | 从 JSON 加载预标定 ROI，跳过交互点击 |
+| `--save-roi` | (无) | 标定后保存 ROI 到 JSON（按键 's' 或退出时自动） |
+| `--protocol` | (无) | 额外显示协议层解码 (msg_id/seq/valid) |
+| `--threshold` | 120 | 亮度阈值 |
+| `--roi-size` | 24 | ROI 采样方框边长 |
+| `--log` | (无) | 日志输出路径 |
+| `--log-format` | csv | csv 或 jsonl |
+
+### 键盘操作 (六灯)
+
+| 按键 | 功能 |
+|------|------|
+| 鼠标左键点击 | 依次设定 D0 → D1 → D2 → REF → SEQ → PAR |
+| `s` | 保存当前 ROI 到 `--save-roi` 路径 |
+| `+` / `=` | 阈值 +5 |
+| `-` | 阈值 -5 |
+| `r` | 重置选点 |
+| `q` | 退出 |
+
+### 验收状态
+
+⚠️ 当前 tag `m3-2-sixled-soft-green` **仅表示软件测试通过 (484 passed)**。
+
+- 真实 Hikrobot 相机 + STM32 六灯板尚未验收
+- 不要把 mock / unit test 结果当作实机结果
+- 当前不接 FSM 真实动作
+- 当前只验证 LED bitmask 识别
+
 ## AprilTag 检测 (smoke test)
 
 ### 前置
@@ -246,20 +336,28 @@ HikrobotFrameProvider (hikrobot_frame_provider.py)
   ├── 相机枚举 / 打开 / 启停 / 关闭
   ├── 帧抓取 → BeaconFrame
   │
-ThreeLedRoiDecoder (hikrobot_frame_provider.py)
+ThreeLedRoiDecoder (hikrobot_frame_provider.py)       ← 3-LED 解码
   ├── 3-LED ROI 采样
   ├── SEQ 跟踪（msg_id 变化时翻转）
-  ├── REF/SEQ/PAR 合成（兼容 8-LED 协议）
-  └── 输出 DecodedBeacon → BeaconStabilizer → R2 FSM
-
-FakeFrameProvider (fake_frame_provider.py)
-  └── 测试用合成帧，无需相机
-
+  └── 输出 DecodedBeacon
+  │
+SixLedRoiDecoder (six_led_decoder.py)                 ← 6-LED 解码
+  ├── 6-LED ROI 采样 → bitmask / confidence / valid
+  └── six_led_to_decoded_beacon() → 协议兼容
+  │
+PatternMapper (pattern_mapper.py)                     ← LED 布局映射
+  ├── PATTERN_3LED_BELOW / PATTERN_6LED_HORIZONTAL / PATTERN_6LED_TWO_ROW
+  ├── manual_rois() — 手动 origin + px/mm
+  └── apriltag_rois() — AprilTag 引导 (delegates to AprilTagRoiMapper)
+  │
+AprilTagRoiMapper (apriltag_roi_mapper.py)            ← homography 投影
+  └── AprilTag corners → homography → LED pixel coords
+  │
 FrameLogger (frame_logger.py)
   └── CSV / JSONL 调试日志
-
-ApriltagDetector (apriltag_detector.py)
-  └── lazy-loading pupil-apriltags wrapper → TagDetection list
+  │
+FakeFrameProvider (fake_frame_provider.py)
+  └── 测试用合成帧，无需相机
 ```
 
 ### 3-LED 解码说明

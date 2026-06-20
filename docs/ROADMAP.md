@@ -87,10 +87,13 @@ python -m robocon_coop_comm.demo_cv
 
 - ✅ `PatternMapper` — 可配置 LED 模式映射器（手动/AT ROI）
 - ✅ `SixLedRoiDecoder` — 6-LED 亮度采样 → bitmask/confidence/valid
-- ✅ `tools/hikrobot_6led_live.py` — 六灯实时工具
+- ✅ `tools/hikrobot_6led_live.py` — 六灯实时工具（ROI JSON 加载/保存）
+- ✅ `tools/sixled_log_summary.py` — 六灯日志分析工具
+- ✅ `data/sixled/configs/sixled_roi.example.json` — 示例配置
 - ✅ 预定义模式：`PATTERN_3LED_BELOW`、`PATTERN_6LED_HORIZONTAL`、`PATTERN_6LED_TWO_ROW`
-- ✅ 测试覆盖：pattern_mapper (28)、six_led_decoder (25)
+- ✅ 测试覆盖：pattern_mapper (28)、six_led_decoder (25)、log_summary (20)
 - ✅ 六灯视觉层只输出 bitmask / confidence / valid，不写死比赛语义
+- ⚠️ 真实 Hikrobot 相机 + STM32 六灯板实机尚未验收
 
 ## M4：ROS2 集成
 
