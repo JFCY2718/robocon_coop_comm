@@ -13,6 +13,7 @@ dependencies = []
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "ruff>=0.4.0"]
 vision = ["numpy>=1.21", "opencv-python>=4.5"]
+apriltag = ["pupil-apriltags>=1.0"]
 
 [project.scripts]
 robocon-demo-cli = "robocon_coop_comm.demo_cli:main"

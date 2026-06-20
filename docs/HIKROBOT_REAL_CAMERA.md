@@ -18,6 +18,7 @@ tar -xzf MVS-*.tar.gz -C /opt/
 # 2. 安装 Python 依赖
 source .venv/bin/activate
 pip install -e ".[vision]"
+pip install pupil-apriltags
 
 # 3. 设置环境变量
 export MVCAM_COMMON_RUNENV=/opt/MVS/lib
@@ -166,6 +167,78 @@ python -m robocon_coop_comm.demo_cv
 
 仅在 `import HikrobotFrameProvider` 或调用 `provider.open()` 时才会尝试加载 MVS SDK。
 
+## AprilTag 检测 (smoke test)
+
+### 前置
+
+```bash
+pip install pupil-apriltags
+```
+
+### A4 打印与摆放
+
+1. 从 [april.pdf](https://github.com/AprilRobotics/apriltag-imgs) 下载 tag36h11 id=0 的 PDF。
+2. 用 A4 纸 100% 比例打印（不缩放）。
+3. 将标签平贴在硬纸板或泡沫板上，保持平整无褶皱。
+4. 摆放距离：50 cm – 1.5 m，标签正对相机。
+5. 避免强反光和阴影遮挡标签黑边。
+
+### 相机曝光建议
+
+| 条件 | ExposureTime | Gain |
+|------|-------------|------|
+| 室内日光灯 | 5000 – 10000 µs | 3 – 5 |
+| 较暗环境 | 15000 – 30000 µs | 8 – 15 |
+| 户外阴天 | 2000 – 5000 µs | 1 – 3 |
+
+建议先用 Hikrobot MVS 客户端预览，调整至标签黑白边界清晰可见。
+
+### 运行
+
+```bash
+# 基础检测
+python tools/hikrobot_apriltag_smoke.py
+
+# 实时显示 + 标注
+python tools/hikrobot_apriltag_smoke.py --display
+
+# 指定 tag id 过滤
+python tools/hikrobot_apriltag_smoke.py --tag-id 0 --display
+
+# 记录 JSONL 日志
+python tools/hikrobot_apriltag_smoke.py --log-jsonl /tmp/tags.jsonl
+
+# 抓取单帧有检测结果后保存并退出
+python tools/hikrobot_apriltag_smoke.py --save-frame /tmp/tag_detected.png
+
+# 调整曝光/增益
+python tools/hikrobot_apriltag_smoke.py --exposure 8000 --gain 3.0
+```
+
+### 预期输出
+
+```
+Camera opened.  Detecting family=tag36h11  expecting tag_id=0
+Press Ctrl-C to stop.
+
+[    1] ts=1720000000.123  tags: (none)         lat=8.2ms
+[   23] ts=1720000000.456  tags: id=0 dm=42.50  lat=7.8ms
+  ┌─ tag_id=0  family=tag36h11
+  ├─ center=(320.5, 240.5)
+  ├─ decision_margin=42.5000
+  └─ corners=[(100.0,100.0), (540.0,100.0), (540.0,380.0), (100.0,380.0)]
+```
+
+- `decision_margin` > 20 通常表示稳定检测。
+- 角点顺序：corner 0 为 tag 坐标系原点，逆时针排列。
+
+### 不依赖相机运行
+
+```bash
+python tools/hikrobot_apriltag_smoke.py --help     # 随时可用
+pytest test/test_apriltag_detector.py -q           # 纯软件测试
+```
+
 ## 模块架构
 
 ```
@@ -184,6 +257,9 @@ FakeFrameProvider (fake_frame_provider.py)
 
 FrameLogger (frame_logger.py)
   └── CSV / JSONL 调试日志
+
+ApriltagDetector (apriltag_detector.py)
+  └── lazy-loading pupil-apriltags wrapper → TagDetection list
 ```
 
 ### 3-LED 解码说明

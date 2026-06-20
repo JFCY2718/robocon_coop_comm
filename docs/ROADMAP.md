@@ -61,6 +61,22 @@ python -m robocon_coop_comm.demo_cv
 - ✅ pipeline：HikrobotFrameProvider → ThreeLedRoiDecoder → BeaconStabilizer → R2 FSM
 - ✅ 测试覆盖 roi_mean、decode_3led_from_frame、FakeFrameProvider、ThreeLedRoiDecoder、FrameLogger
 
+### M3-2：AprilTag 检测 + 透视矫正 + LED ROI ✅
+
+- ✅ `ApriltagDetector` — pupil-apriltags 封装，lazy import
+- ✅ `tools/hikrobot_apriltag_smoke.py` — 真实相机 AprilTag smoke test
+- ✅ 100mm / 150mm A4 打印 PDF + PNG 生成
+- ✅ `AprilTagRoiMapper` — homography 透视矫正 + LED ROI 投影
+- ✅ `AprilTagBeaconDecoder` — AprilTag → ROI → 3-LED 解码完整 pipeline
+- ✅ 测试覆盖 apriltag_roi_mapper (40 tests)、beacon_decoder_apriltag (20 tests)
+- ⚠️ 有真实相机时的实测尚未完成 — M3 整体不能打勾
+
+### M3-3：R2 FSM 安全测试补充 ✅
+
+- ✅ R2 FSM 测试从 38 → 107 个
+- ✅ HOLD/ERROR 状态韧性、视觉消息安全门控、所有 MsgID 覆盖
+- ✅ 重复 seq 去抖、RETRY_RESET、PRE_INSERT_READY、所有状态测试
+
 ## M4：ROS2 集成
 
 目标：
