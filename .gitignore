@@ -28,3 +28,6 @@ data/sixled/logs/*
 !data/sixled/logs/.gitkeep
 data/sixled/frames/*
 !data/sixled/frames/.gitkeep
+data/sixled/configs/breadboard_roi.json
+data/sixled/configs/my_roi.json
+sixled_roi.json

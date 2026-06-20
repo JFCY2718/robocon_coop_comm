@@ -207,6 +207,9 @@ def main() -> None:
         threshold=args.threshold, roi_size=args.roi_size
     )
     provider: HikrobotFrameProvider | None = None
+    selector = LedSelector6()   # safe to create outside try — no SDK needed
+    if preloaded_points is not None:
+        selector.points = list(preloaded_points)
 
     try:
         provider = HikrobotFrameProvider(
@@ -215,10 +218,6 @@ def main() -> None:
             timeout_ms=args.timeout,
         )
         provider.open()
-
-        selector = LedSelector6()
-        if preloaded_points is not None:
-            selector.points = list(preloaded_points)
 
         window = "Hikrobot 6LED Live"
         cv2.namedWindow(window, cv2.WINDOW_NORMAL)
@@ -372,6 +371,13 @@ def main() -> None:
                 decoder.threshold = threshold
                 print(f"\nthreshold={threshold}")
 
+    except RuntimeError as exc:
+        print(f"\nERROR: Cannot open Hikrobot camera.\n{exc}", file=sys.stderr)
+        print("\nHikrobot MVS SDK environment variables required:", file=sys.stderr)
+        print("  export MVCAM_COMMON_RUNENV=/opt/MVS/lib", file=sys.stderr)
+        print("  export PYTHONPATH=/opt/MVS/Samples/64/Python/MvImport:$PYTHONPATH", file=sys.stderr)
+        print("  export LD_LIBRARY_PATH=/opt/MVS/lib/64:/opt/MVS/bin:$LD_LIBRARY_PATH", file=sys.stderr)
+        sys.exit(1)
     except KeyboardInterrupt:
         print("\nInterrupted.")
     finally:
@@ -382,7 +388,7 @@ def main() -> None:
                 pass
 
         # Auto-save ROI on clean exit if requested and we have points.
-        if args.save_roi and selector.ready and not preloaded_points:
+        if args.save_roi and selector is not None and selector.ready and not preloaded_points:
             _save_roi_file(
                 args.save_roi, selector.points,
                 roi_size=args.roi_size, threshold=args.threshold,

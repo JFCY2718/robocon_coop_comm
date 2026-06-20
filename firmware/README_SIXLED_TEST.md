@@ -1,13 +1,17 @@
 # STM32 六灯测试固件 — Hikrobot Bitmask Smoke Test
 
+> 当前面包板实测文档: `docs/HIKROBOT_6LED_BREADBOARD_TEST.md`
+
 ## 当前用途
 
 这是 **STM32F103 六灯测试固件**，用于配合 Hikrobot 相机进行 LED bitmask 识别 smoke test。
 
+- ✅ STM32 六灯已全部可点亮 (PA0-PA5)
 - ✅ 验证相机能否区分 6 个 LED 的亮灭
 - ✅ 验证 bitmask 映射 (D0=bit0 … PAR=bit5) 与 Python 侧一致
 - ❌ **不是**最终比赛固件
 - ❌ **不包含**比赛协议逻辑 (msg_id/seq/ACK)
+- ⚠️ 当前为面包板结构，非最终灯板
 - ❌ 不宣称硬件闭环验收通过
 
 ## 硬件

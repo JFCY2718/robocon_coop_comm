@@ -257,6 +257,7 @@ class HikrobotFrameProvider(BeaconFrameProvider):
                 MV_ACCESS_Exclusive,
                 MV_CC_DEVICE_INFO,
                 MV_CC_DEVICE_INFO_LIST,
+                MV_FRAME_OUT_INFO_EX,
                 MV_GIGE_DEVICE,
                 MV_USB_DEVICE,
                 MVCC_INTVALUE,
@@ -272,6 +273,7 @@ class HikrobotFrameProvider(BeaconFrameProvider):
 
         self._MvCamera = MvCamera
         self._ctypes = ctypes
+        self._MV_FRAME_OUT_INFO_EX = MV_FRAME_OUT_INFO_EX
 
         # --- enumerate ---
         device_list = MV_CC_DEVICE_INFO_LIST()
@@ -350,11 +352,12 @@ class HikrobotFrameProvider(BeaconFrameProvider):
         ctypes = self._ctypes
         cam = self._cam
         payload_size = self._payload_size
+        FrameInfo = self._MV_FRAME_OUT_INFO_EX
 
         data_buf = (ctypes.c_ubyte * payload_size)()
-        frame_info = self._ctypes.MV_FRAME_OUT_INFO_EX()
+        frame_info = FrameInfo()
         ctypes.memset(
-            ctypes.byref(frame_info), 0, ctypes.sizeof(self._ctypes.MV_FRAME_OUT_INFO_EX)
+            ctypes.byref(frame_info), 0, ctypes.sizeof(FrameInfo)
         )
 
         ret = cam.MV_CC_GetOneFrameTimeout(

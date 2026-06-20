@@ -257,6 +257,12 @@ pytest test/test_six_led_decoder.py test/test_sixled_log_summary.py -q
 - 当前不接 FSM 真实动作
 - 当前只验证 LED bitmask 识别
 
+### 面包板实测 (Round 4A)
+
+当前正在进行面包板阶段的六灯 bitmask smoke test。详见：
+
+👉 **`docs/HIKROBOT_6LED_BREADBOARD_TEST.md`** — 完整面包板测试流程、SDK 配置、ROI 标定、threshold 调参、故障排查。
+
 ## AprilTag 检测 (smoke test)
 
 ### 前置

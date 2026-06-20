@@ -95,6 +95,23 @@ python -m robocon_coop_comm.demo_cv
 - ✅ 六灯视觉层只输出 bitmask / confidence / valid，不写死比赛语义
 - ⚠️ 真实 Hikrobot 相机 + STM32 六灯板实机尚未验收
 
+### M3-6：Hikrobot 六灯面包板 Bitmask Smoke Test 🔬
+
+- 🔬 **Round 4A 进行中**：真实相机六灯 bitmask 稳定性测试
+- ✅ STM32 六灯全部可点亮 (PA0-PA5)
+- ✅ MVS SDK import OK
+- ✅ OpenCV ROI 窗口可打开
+- ✅ breadboard_roi.json 标定流程已跑通
+- ✅ `MV_FRAME_OUT_INFO_EX` SDK struct 引用错误已修复
+- ✅ `selector` UnboundLocalError 已修复
+- ⬜ 全灭→0x00 验证
+- ⬜ 全亮→0x3F 验证
+- ⬜ 单灯 0x01/0x02/0x04/0x08/0x10/0x20 验证
+- ⬜ sixled_log_summary.py 真实日志汇总
+- ⚠️ 面包板结构，非最终灯板
+- ⚠️ 当前不接 FSM、不接比赛语义
+- 详见 `docs/HIKROBOT_6LED_BREADBOARD_TEST.md`
+
 ## M4：ROS2 集成
 
 目标：
