@@ -73,6 +73,14 @@ class R2MissionFSM:
             self.state = R2State.HOLD if msg != MsgID.ERROR else R2State.ERROR
             return self.output("hold", msg.name)
 
+        # ── safety gate: HOLD / ERROR lock out normal task messages ──
+        # Only HOLD, ERROR, ABORT, ESTOP (handled above) may change state
+        # once the FSM has entered HOLD or ERROR.  Normal task messages
+        # (INSERT_ALLOWED, WEAPON_LOCKED, R1_CLEAR_MC, …) must NOT be
+        # able to sneak R2 out of a safety hold.
+        if self.state in (R2State.HOLD, R2State.ERROR):
+            return self.output("hold_active", self.state.name.lower() + "_active")
+
         # Repeated same seq+msg is allowed for holding current permission, but should not retrigger
         # one-shot actions unless the state also permits it.
         is_new_event = (self.last_msg_id, self.last_seq) != (beacon.msg_id, beacon.seq)

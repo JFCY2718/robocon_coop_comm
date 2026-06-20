@@ -517,84 +517,74 @@ class TestHoldStateResilience:
         assert out.action_hint == "stop_all"
 
     def test_hold_insert_allowed_with_all_sensors_ready(self) -> None:
-        """SAFETY: INSERT_ALLOWED from HOLD with all sensors ready.
+        """SAFETY: INSERT_ALLOWED from HOLD is blocked by the HOLD safety gate.
 
-        Current behaviour note: INSERT_ALLOWED does NOT check current state.
-        If all sensors are ready, it transitions to INSERTING regardless of HOLD.
-        This is documented as a known behaviour — review whether HOLD should
-        gate INSERT_ALLOWED.
+        Even with all local sensors ready, the FSM must refuse to leave HOLD
+        upon receiving a normal task message.
         """
         fsm = _fsm_at(R2State.HOLD)
         sensors = R2Sensors(head_grabbed=True, r1_tag_visible=True, pre_insert_pose_ok=True)
         out = fsm.update(_beacon(MsgID.INSERT_ALLOWED, 0), sensors)
-        # Documents current behaviour: INSERT_ALLOWED bypasses HOLD
-        assert out.action_hint in ("insert_head", "wait_local_ready")
+        assert fsm.state == R2State.HOLD  # safety gate blocks insertion
+        assert out.action_hint == "hold_active"
+        assert "hold_active" in out.reason
 
     def test_hold_weapon_locked_is_gated(self) -> None:
-        """WEAPON_LOCKED from HOLD should not release head.
-
-        WEAPON_LOCKED requires state==INSERTING or insertion_motion_done==True.
-        From HOLD with no insertion_motion_done, it should be gated.
-        """
+        """WEAPON_LOCKED from HOLD is blocked by the HOLD safety gate."""
         fsm = _fsm_at(R2State.HOLD)
         sensors = R2Sensors(insertion_motion_done=False)
         out = fsm.update(_beacon(MsgID.WEAPON_LOCKED, 0), sensors)
-        assert fsm.state == R2State.HOLD  # unchanged
-        assert out.action_hint == "wait_insert_complete"
+        assert fsm.state == R2State.HOLD
+        assert out.action_hint == "hold_active"
 
-    def test_hold_weapon_locked_with_insertion_done_releases(self) -> None:
-        """WEAPON_LOCKED from HOLD with insertion_motion_done=True.
+    def test_hold_weapon_locked_with_insertion_done_blocked(self) -> None:
+        """WEAPON_LOCKED from HOLD even with insertion_motion_done=True is blocked.
 
-        Current behaviour: WEAPON_LOCKED does NOT check for HOLD state.
-        If insertion_motion_done is True, it will transition to HEAD_RELEASED.
-        This is documented as a known behaviour.
+        Previously this would release the head, but HOLD safety gate now
+        prevents it.
         """
         fsm = _fsm_at(R2State.HOLD)
         sensors = R2Sensors(insertion_motion_done=True)
         out = fsm.update(_beacon(MsgID.WEAPON_LOCKED, 0), sensors)
-        # Documents current behaviour
-        assert out.action_hint in ("release_head_and_retreat", "wait_insert_complete")
+        assert fsm.state == R2State.HOLD
+        assert out.action_hint == "hold_active"
 
-    def test_hold_r1_clear_mc_is_gated(self) -> None:
-        """R1_CLEAR_MC from HOLD should not allow leaving MC.
-
-        R1_CLEAR_MC requires state in (HEAD_RELEASED, WAIT_R1_CLEAR_MC).
-        HOLD is neither, so it's correctly gated.
-        """
+    def test_hold_r1_clear_mc_is_blocked(self) -> None:
+        """R1_CLEAR_MC from HOLD is blocked by safety gate."""
         fsm = _fsm_at(R2State.HOLD)
         out = fsm.update(_beacon(MsgID.R1_CLEAR_MC, 0), R2Sensors())
         assert fsm.state == R2State.HOLD
-        assert out.action_hint == "wait_head_release"
+        assert out.action_hint == "hold_active"
 
-    def test_hold_r1_in_mf_is_gated(self) -> None:
-        """R1_IN_MF from HOLD should not allow entering MF."""
+    def test_hold_r1_in_mf_is_blocked(self) -> None:
+        """R1_IN_MF from HOLD is blocked by safety gate."""
         fsm = _fsm_at(R2State.HOLD)
         out = fsm.update(_beacon(MsgID.R1_IN_MF, 0), R2Sensors())
         assert fsm.state == R2State.HOLD
-        assert out.action_hint == "wait_clear_mc_first"
+        assert out.action_hint == "hold_active"
 
-    def test_hold_r1_rod_clamped_no_effect(self) -> None:
-        """R1_ROD_CLAMPED from HOLD should be ignored (not WAIT_R1)."""
+    def test_hold_r1_rod_clamped_blocked(self) -> None:
+        """R1_ROD_CLAMPED from HOLD is blocked by safety gate."""
         fsm = _fsm_at(R2State.HOLD)
         out = fsm.update(_beacon(MsgID.R1_ROD_CLAMPED, 0), R2Sensors())
         assert fsm.state == R2State.HOLD
-        assert out.action_hint == "wait"
+        assert out.action_hint == "hold_active"
 
-    def test_hold_r1_at_assembly_pose_no_effect(self) -> None:
-        """R1_AT_ASSEMBLY_POSE from HOLD should be ignored."""
+    def test_hold_r1_at_assembly_pose_blocked(self) -> None:
+        """R1_AT_ASSEMBLY_POSE from HOLD is blocked by safety gate."""
         fsm = _fsm_at(R2State.HOLD)
         sensors = R2Sensors(head_grabbed=True)
         out = fsm.update(_beacon(MsgID.R1_AT_ASSEMBLY_POSE, 0), sensors)
         assert fsm.state == R2State.HOLD
-        assert out.action_hint == "wait"
+        assert out.action_hint == "hold_active"
 
-    def test_hold_irrelevant_msg_no_effect(self) -> None:
-        """Any unhandled message from HOLD should not change state."""
+    def test_hold_irrelevant_msg_blocked(self) -> None:
+        """Any normal message from HOLD is blocked by safety gate."""
         fsm = _fsm_at(R2State.HOLD)
         for msg_id in (MsgID.DEBUG, MsgID.TEST, MsgID.GRID_TARGET_1, MsgID.IDLE):
             out = fsm.update(_beacon(msg_id, 0), R2Sensors())
             assert fsm.state == R2State.HOLD
-            assert out.action_hint == "wait"
+            assert out.action_hint == "hold_active"
 
 
 # ===================================================================
@@ -635,45 +625,41 @@ class TestErrorStateResilience:
         assert fsm.state == R2State.ERROR
         assert out.action_hint == "stop_all"
 
-    def test_error_insert_allowed_is_ignored(self) -> None:
-        """SAFETY: INSERT_ALLOWED from ERROR must not trigger insertion.
-
-        Current behaviour note: INSERT_ALLOWED does NOT check current state.
-        If all sensors are ready, it transitions to INSERTING regardless of ERROR.
-        This is documented as a known behaviour.
-        """
+    def test_error_insert_allowed_is_blocked(self) -> None:
+        """SAFETY: INSERT_ALLOWED from ERROR is blocked by the ERROR safety gate."""
         fsm = _fsm_at(R2State.ERROR)
         sensors = R2Sensors(head_grabbed=True, r1_tag_visible=True, pre_insert_pose_ok=True)
         out = fsm.update(_beacon(MsgID.INSERT_ALLOWED, 0), sensors)
-        # Documents current behaviour
-        assert out.action_hint in ("insert_head", "wait_local_ready")
+        assert fsm.state == R2State.ERROR
+        assert out.action_hint == "hold_active"
+        assert "error_active" in out.reason
 
-    def test_error_weapon_locked_is_gated(self) -> None:
-        """WEAPON_LOCKED from ERROR without insertion_done is gated."""
+    def test_error_weapon_locked_is_blocked(self) -> None:
+        """WEAPON_LOCKED from ERROR is blocked by safety gate."""
         fsm = _fsm_at(R2State.ERROR)
         sensors = R2Sensors(insertion_motion_done=False)
         out = fsm.update(_beacon(MsgID.WEAPON_LOCKED, 0), sensors)
         assert fsm.state == R2State.ERROR
-        assert out.action_hint == "wait_insert_complete"
+        assert out.action_hint == "hold_active"
 
-    def test_error_r1_clear_mc_is_gated(self) -> None:
+    def test_error_r1_clear_mc_is_blocked(self) -> None:
         fsm = _fsm_at(R2State.ERROR)
         out = fsm.update(_beacon(MsgID.R1_CLEAR_MC, 0), R2Sensors())
         assert fsm.state == R2State.ERROR
-        assert out.action_hint == "wait_head_release"
+        assert out.action_hint == "hold_active"
 
-    def test_error_r1_in_mf_is_gated(self) -> None:
+    def test_error_r1_in_mf_is_blocked(self) -> None:
         fsm = _fsm_at(R2State.ERROR)
         out = fsm.update(_beacon(MsgID.R1_IN_MF, 0), R2Sensors())
         assert fsm.state == R2State.ERROR
-        assert out.action_hint == "wait_clear_mc_first"
+        assert out.action_hint == "hold_active"
 
-    def test_error_irrelevant_msg_no_effect(self) -> None:
+    def test_error_irrelevant_msg_blocked(self) -> None:
         fsm = _fsm_at(R2State.ERROR)
         for msg_id in (MsgID.DEBUG, MsgID.TEST, MsgID.R1_ROD_CLAMPED):
             out = fsm.update(_beacon(msg_id, 0), R2Sensors())
             assert fsm.state == R2State.ERROR
-            assert out.action_hint == "wait"
+            assert out.action_hint == "hold_active"
 
 
 # ===================================================================
@@ -801,20 +787,23 @@ class TestRetryReset:
         assert out.action_hint == "wait"
         assert out.reason == "no_matching_transition"
 
-    def test_retry_reset_from_hold_is_noop(self) -> None:
-        """RETRY_RESET could be used to recover from HOLD, but currently unhandled."""
+    def test_retry_reset_from_hold_is_blocked(self) -> None:
+        """RETRY_RESET from HOLD is blocked by the safety gate.
+
+        Future: if RETRY_RESET should recover from HOLD, add it to the
+        HOLD/ERROR/ABORT override list in R2MissionFSM.update().
+        """
         fsm = _fsm_at(R2State.HOLD)
         out = fsm.update(_beacon(MsgID.RETRY_RESET, 0), R2Sensors())
-        # Current behaviour: no handler → falls through to wait
-        assert out.action_hint == "wait"
-        assert out.reason == "no_matching_transition"
+        assert fsm.state == R2State.HOLD
+        assert out.action_hint == "hold_active"
 
-    def test_retry_reset_from_error_is_noop(self) -> None:
-        """RETRY_RESET from ERROR currently unhandled — falls through."""
+    def test_retry_reset_from_error_is_blocked(self) -> None:
+        """RETRY_RESET from ERROR is blocked by the safety gate."""
         fsm = _fsm_at(R2State.ERROR)
         out = fsm.update(_beacon(MsgID.RETRY_RESET, 0), R2Sensors())
-        assert out.action_hint == "wait"
-        assert out.reason == "no_matching_transition"
+        assert fsm.state == R2State.ERROR
+        assert out.action_hint == "hold_active"
 
     def test_retry_reset_from_inserting_is_noop(self) -> None:
         fsm = _fsm_at(R2State.INSERTING)
@@ -1177,3 +1166,156 @@ class TestFSMDefaults:
         out2 = fsm.reset()
         assert fsm.state == R2State.WAIT_R1
         assert out1 == out2
+
+
+# ===================================================================
+# Safety priority chain — ABORT / ESTOP must ALWAYS win
+# ===================================================================
+
+
+class TestSafetyPriorityChain:
+    """Explicit audit of the safety priority chain in ``R2MissionFSM.update()``.
+
+    Execution order (top to bottom, first match returns):
+
+    1. **ESTOP** (line 60) — highest priority.  Does not even look at the beacon.
+    2. invalid beacon (line 64) — return ``ignore``.
+    3. unknown msg_id (line 67) — return ``ignore``.
+    4. **HOLD / ERROR / ABORT** (line 72) — override to HOLD or ERROR.
+    5. **safety gate** (line 81) — blocks HOLD/ERROR from normal transitions.
+    6. normal task transitions (line 84+).
+
+    This test class verifies that ABORT and ESTOP can never be blocked by
+    the safety gate, because they are handled *before* it.
+    """
+
+    # ── HOLD + emergency messages ──────────────────────────────────
+
+    def test_hold_plus_abort_goes_to_hold(self) -> None:
+        """ABORT is handled at line 72, before the safety gate at line 81."""
+        fsm = _fsm_at(R2State.HOLD)
+        out = fsm.update(_beacon(MsgID.ABORT_CURRENT_TASK, 0), R2Sensors())
+        assert fsm.state == R2State.HOLD
+        assert out.action_hint == "hold"
+        assert out.reason == "ABORT_CURRENT_TASK"
+
+    def test_hold_plus_estop_goes_to_error(self) -> None:
+        """ESTOP is handled at line 60, before everything else."""
+        fsm = _fsm_at(R2State.HOLD)
+        sensors = R2Sensors(estop=True)
+        out = fsm.update(_beacon(MsgID.IDLE, 0), sensors)
+        assert fsm.state == R2State.ERROR
+        assert out.action_hint == "stop_all"
+        assert out.reason == "estop"
+
+    def test_hold_plus_insert_allowed_rejected(self) -> None:
+        """INSERT_ALLOWED is NOT handled before line 81 → blocked by safety gate."""
+        fsm = _fsm_at(R2State.HOLD)
+        sensors = R2Sensors(head_grabbed=True, r1_tag_visible=True, pre_insert_pose_ok=True)
+        out = fsm.update(_beacon(MsgID.INSERT_ALLOWED, 0), sensors)
+        assert fsm.state == R2State.HOLD  # did NOT become INSERTING
+        assert out.action_hint == "hold_active"
+
+    def test_hold_plus_weapon_locked_rejected(self) -> None:
+        """WEAPON_LOCKED is NOT handled before line 81 → blocked by safety gate."""
+        fsm = _fsm_at(R2State.HOLD)
+        sensors = R2Sensors(insertion_motion_done=True)  # even with insertion done
+        out = fsm.update(_beacon(MsgID.WEAPON_LOCKED, 0), sensors)
+        assert fsm.state == R2State.HOLD
+        assert out.action_hint == "hold_active"
+
+    # ── ERROR + emergency messages ─────────────────────────────────
+
+    def test_error_plus_abort_goes_to_hold(self) -> None:
+        """ABORT from ERROR → HOLD (downgrade).  Line 72, before safety gate."""
+        fsm = _fsm_at(R2State.ERROR)
+        out = fsm.update(_beacon(MsgID.ABORT_CURRENT_TASK, 0), R2Sensors())
+        assert fsm.state == R2State.HOLD
+        assert out.action_hint == "hold"
+
+    def test_error_plus_estop_stays_error(self) -> None:
+        """ESTOP from ERROR → ERROR.  Line 60, before everything."""
+        fsm = _fsm_at(R2State.ERROR)
+        sensors = R2Sensors(estop=True)
+        out = fsm.update(_beacon(MsgID.IDLE, 0), sensors)
+        assert fsm.state == R2State.ERROR
+        assert out.action_hint == "stop_all"
+
+    def test_error_plus_insert_allowed_rejected(self) -> None:
+        """INSERT_ALLOWED from ERROR → blocked by safety gate."""
+        fsm = _fsm_at(R2State.ERROR)
+        sensors = R2Sensors(head_grabbed=True, r1_tag_visible=True, pre_insert_pose_ok=True)
+        out = fsm.update(_beacon(MsgID.INSERT_ALLOWED, 0), sensors)
+        assert fsm.state == R2State.ERROR
+        assert out.action_hint == "hold_active"
+
+    def test_error_plus_weapon_locked_rejected(self) -> None:
+        """WEAPON_LOCKED from ERROR → blocked by safety gate."""
+        fsm = _fsm_at(R2State.ERROR)
+        sensors = R2Sensors(insertion_motion_done=True)
+        out = fsm.update(_beacon(MsgID.WEAPON_LOCKED, 0), sensors)
+        assert fsm.state == R2State.ERROR
+        assert out.action_hint == "hold_active"
+
+    # ── ESTOP always wins, regardless of everything ─────────────────
+
+    def test_estop_wins_over_abort_message(self) -> None:
+        """ESTOP (line 60) executes before ABORT message check (line 72)."""
+        fsm = R2MissionFSM()
+        sensors = R2Sensors(estop=True)
+        out = fsm.update(_beacon(MsgID.ABORT_CURRENT_TASK, 0), sensors)
+        assert fsm.state == R2State.ERROR
+        assert out.action_hint == "stop_all"
+        assert out.reason == "estop"
+
+    def test_estop_wins_with_invalid_beacon(self) -> None:
+        """ESTOP must trigger even if the beacon is garbage."""
+        fsm = _fsm_at(R2State.INSERTING)
+        sensors = R2Sensors(estop=True)
+        out = fsm.update(_invalid_beacon(), sensors)
+        assert fsm.state == R2State.ERROR
+        assert out.action_hint == "stop_all"
+
+    def test_estop_wins_with_unknown_msg(self) -> None:
+        """ESTOP wins even with out-of-range msg_id."""
+        fsm = _fsm_at(R2State.INSERTING)
+        sensors = R2Sensors(estop=True)
+        from robocon_coop_comm.protocol import DecodedBeacon as ProtoBeacon
+        unknown = ProtoBeacon(msg_id=99, seq=0, valid=True, bits={})
+        out = fsm.update(unknown, sensors)
+        assert fsm.state == R2State.ERROR
+        assert out.action_hint == "stop_all"
+
+    def test_estop_wins_from_any_state(self) -> None:
+        """ESTOP must trigger independently of current FSM state."""
+        sensors = R2Sensors(estop=True)
+        for state in R2State:
+            fsm = _fsm_at(state)
+            out = fsm.update(_beacon(MsgID.INSERT_ALLOWED, 0), sensors)
+            assert fsm.state == R2State.ERROR, f"ESTOP from {state} should → ERROR"
+            assert out.action_hint == "stop_all"
+
+    # ── Safety gate is not reachable by HOLD/ERROR/ABORT messages ───
+
+    def test_safety_gate_not_reachable_by_hold_msg(self) -> None:
+        """HOLD msg returns at line 72-74, never reaches safety gate at line 81."""
+        fsm = _fsm_at(R2State.HOLD)
+        out = fsm.update(_beacon(MsgID.HOLD, 1), R2Sensors())
+        # If safety gate had run, action_hint would be "hold_active".
+        # HOLD/ERROR/ABORT handler returns "hold".
+        assert out.action_hint == "hold"
+        assert out.reason == "HOLD"
+
+    def test_safety_gate_not_reachable_by_error_msg(self) -> None:
+        """ERROR msg returns at line 72-74, never reaches safety gate at line 81."""
+        fsm = _fsm_at(R2State.ERROR)
+        out = fsm.update(_beacon(MsgID.ERROR, 1), R2Sensors())
+        assert out.action_hint == "hold"
+        assert out.reason == "ERROR"
+
+    def test_safety_gate_not_reachable_by_abort_msg(self) -> None:
+        """ABORT msg returns at line 72-74, never reaches safety gate at line 81."""
+        fsm = _fsm_at(R2State.ERROR)
+        out = fsm.update(_beacon(MsgID.ABORT_CURRENT_TASK, 0), R2Sensors())
+        assert out.action_hint == "hold"
+        assert out.reason == "ABORT_CURRENT_TASK"

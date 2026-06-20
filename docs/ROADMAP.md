@@ -77,6 +77,21 @@ python -m robocon_coop_comm.demo_cv
 - ✅ HOLD/ERROR 状态韧性、视觉消息安全门控、所有 MsgID 覆盖
 - ✅ 重复 seq 去抖、RETRY_RESET、PRE_INSERT_READY、所有状态测试
 
+### M3-4：R2 FSM 安全门控修复 ✅
+
+- ✅ HOLD/ERROR 状态下禁止普通视觉消息推进任务
+- ✅ 只有 HOLD / ERROR / ABORT / ESTOP 可以改变 HOLD/ERROR 状态
+- ✅ 测试已更新：所有 HOLD/ERROR 逃逸路径已被门控拦截
+
+### M3-5：六灯 ROI 识别 + PatternMapper ✅
+
+- ✅ `PatternMapper` — 可配置 LED 模式映射器（手动/AT ROI）
+- ✅ `SixLedRoiDecoder` — 6-LED 亮度采样 → bitmask/confidence/valid
+- ✅ `tools/hikrobot_6led_live.py` — 六灯实时工具
+- ✅ 预定义模式：`PATTERN_3LED_BELOW`、`PATTERN_6LED_HORIZONTAL`、`PATTERN_6LED_TWO_ROW`
+- ✅ 测试覆盖：pattern_mapper (28)、six_led_decoder (25)
+- ✅ 六灯视觉层只输出 bitmask / confidence / valid，不写死比赛语义
+
 ## M4：ROS2 集成
 
 目标：
