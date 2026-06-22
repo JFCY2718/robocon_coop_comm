@@ -272,7 +272,7 @@ class BeaconEvent:
 cd /home/jfcy/rc/robocon_coop_comm
 source .venv/bin/activate
 git status
-python3 -m pytest -q
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q
 python tools/hikrobot_6led_live.py --help
 python tools/sixled_log_summary.py --help
 ```

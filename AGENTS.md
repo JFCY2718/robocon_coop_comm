@@ -41,7 +41,7 @@ Useful commands:
 
 ```bash
 source .venv/bin/activate
-pytest -q
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q
 python -m robocon_coop_comm.demo_fsm_safety
 
 python tools/hikrobot_6led_live.py --help

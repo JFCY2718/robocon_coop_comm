@@ -18,7 +18,7 @@ ROBOCON 2026「武林探秘」R1/R2 协作通信项目。
 
 ```bash
 source .venv/bin/activate
-PYTHONPATH="" pytest -q                                        # 556 tests
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q          # 556 tests
 python -m robocon_coop_comm.demo_fsm_safety                     # FSM 安全仿真
 python -m robocon_coop_comm.demo_cli                            # CLI 闭环演示
 python tools/hikrobot_6led_live.py --help                       # 六灯实时工具
