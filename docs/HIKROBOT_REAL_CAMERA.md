@@ -406,3 +406,65 @@ FakeFrameProvider (fake_frame_provider.py)
 此策略可无缝接入现有 `BeaconStabilizer` → `R2MissionFSM` pipeline。
 
 下一阶段升级到 6-LED 硬件后，REF/SEQ/PAR 将直接从图像采样，不再需要合成。
+
+---
+
+## Round 4B：自动化 expected-vs-observed 验证 🆕
+
+Round 4A combined smoke 已证明真实六灯 bitmask 链路能出数据（0x00–0x20 共 8 个 bitmask），但因为手动操作存在 timing 和固定位置偏差，不将 combined 数据作为最终验收。
+
+Round 4B 新增自动化验证工具链：
+
+### 使用流程
+
+**Step 1**：启动 observed log（先启动相机记录）
+
+```bash
+python tools/hikrobot_6led_live.py \
+  --roi-file data/sixled/configs/breadboard_roi.json \
+  --threshold 40 --exposure 12000 --gain 0 --timeout 5000 \
+  --log data/sixled/logs/round4b_t40_e12000.csv \
+  --protocol
+```
+
+**Step 2**：运行 serial sequence sender（自动切换 STM32 六灯）
+
+```bash
+python tools/sixled_serial_sequence.py \
+  --port /dev/ttyACM0 --baud 115200 \
+  --values 0,63,1,2,4,8,16,32 \
+  --hold-sec 5 --warmup-sec 2 \
+  --log data/sixled/logs/round4b_expected.csv
+```
+
+**Step 3**：运行 checker 比对
+
+```bash
+python tools/sixled_expected_observed_check.py \
+  --expected data/sixled/logs/round4b_expected.csv \
+  --observed data/sixled/logs/round4b_t40_e12000.csv \
+  --settle-sec 0.5 --min-dominant-ratio 0.90
+```
+
+### 判定规则
+
+1. 对 expected 每个时间窗口 `[start_ts, end_ts]`，去掉 settle-sec 边界帧
+2. 在 observed log 中筛选时间窗口内的帧
+3. 找 dominant bitmask（出现最多的 bitmask）
+4. dominant == expected 且 ratio >= min-dominant-ratio → **PASS**
+5. 否则 → **FAIL**
+6. 每个窗口独立判定，overall PASS 需要所有窗口 PASS
+
+### expected CSV 格式
+
+```csv
+start_ts,end_ts,value,bitmask,pattern,label
+1782119000.0,1782119005.0,0,0x00,000000,all_off
+1782119005.0,1782119010.0,63,0x3F,111111,all_on
+```
+
+### 注意事项
+
+- ⚠️ 当前**不能**宣称 M3 完成
+- ⚠️ 当前不接 FSM / ROS2 / AprilTag / 真实动作
+- ⚠️ 自动化验收仍需用户使用真实硬件跑完流程

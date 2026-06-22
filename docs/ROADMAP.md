@@ -105,13 +105,20 @@ python -m robocon_coop_comm.demo_cv
 - ✅ `MV_FRAME_OUT_INFO_EX` SDK struct 引用错误已修复
 - ✅ `selector` UnboundLocalError 已修复
 - ✅ Round 4A-logfix: CSV header/row 对齐修复 + summary 兼容旧日志
-- ⬜ 全灭→0x00 验证（需用修复版工具重新采集）
-- ⬜ 全亮→0x3F 验证
-- ⬜ 单灯 0x01/0x02/0x04/0x08/0x10/0x20 验证
-- ⬜ sixled_log_summary.py 真实日志汇总（需用修复版工具重新采集）
+- ✅ Round 4B: sixled_serial_sequence + expected_observed_check 自动化验证工具 🆕
+- ⬜ Round 4B 真实硬件验收（使用自动化工具重新采集验证）
 - ⚠️ 面包板结构，非最终灯板
 - ⚠️ 当前不接 FSM、不接比赛语义
+- ⚠️ Round 4A combined smoke 已证明链路能出数据，但手动 test 存在偏差
 - 详见 `docs/HIKROBOT_6LED_BREADBOARD_TEST.md`
+
+### Round 4B：Six-LED Expected-vs-Observed Validation ✅ 🆕
+
+- ✅ `tools/sixled_serial_sequence.py` — STM32 串口序列发送 + expected CSV 生成
+- ✅ `tools/sixled_expected_observed_check.py` — expected vs observed 时间窗口比对
+- ✅ `robocon_coop_comm/sixled_log.py` — 共享模块（normalise_row, bitmask helpers）
+- ✅ 测试覆盖：bitmask→pattern, old CSV 兼容, dominant matching, settle-sec, FAIL 分支
+- ⬜ 真实硬件自动化验收（用户使用新工具重新采集）
 
 ### Round FSM-A：Mission FSM Safety Hardening ✅
 

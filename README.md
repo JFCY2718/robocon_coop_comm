@@ -6,7 +6,7 @@ ROBOCON 2026「武林探秘」R1/R2 两机协作通信项目。
 R1 通过 LED 光码板发出状态信号，R2 通过摄像头 + AprilTag 检测解码。
 
 > 📌 **当前状态（2026-06-22）**：
-> - ✅ 软件协议与状态机已完成 (556 tests passed)
+> - ✅ 软件协议与状态机已完成 (634 tests passed)
 > - ✅ STM32F103 + 三灯串口闭环已实机验证通过，ACK 正常
 > - ✅ STM32 六灯全部可点亮 (PA0-PA5)
 > - ✅ M3-1：Hikrobot 三灯识别已工程化
@@ -272,6 +272,14 @@ python tools/send_led_frame.py --msg-id 4 --seq 1 --brightness 200
 
 # 关闭 LED
 python tools/send_3led_msg.py --port /dev/ttyACM0 --msg-id 0 --seq 0 --brightness 0
+
+# Round 4B：六灯自动化 expected-vs-observed 验证 🆕
+python tools/sixled_serial_sequence.py \
+  --port /dev/ttyACM0 --values 0,63,1,2,4,8,16,32 \
+  --hold-sec 5 --log data/sixled/logs/round4b_expected.csv
+python tools/sixled_expected_observed_check.py \
+  --expected data/sixled/logs/round4b_expected.csv \
+  --observed data/sixled/logs/round4b_t40_e12000.csv
 
 # Hikrobot 三灯实时解码（需相机 + SDK）
 python tools/hikrobot_3led_live.py

@@ -14,81 +14,21 @@ Usage::
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import sys
 from collections import Counter
 from pathlib import Path
 
-LED_NAMES = ["D0", "D1", "D2", "REF", "SEQ", "PAR"]
+from robocon_coop_comm.sixled_log import (
+    LED_NAMES,
+    normalise_row,
+    read_csv,
+)
 
-# Fields expected in a well-formed new-style CSV.
-# Older CSVs have a shorter header and spill extra columns into row[None].
-_NEW_STYLE_BITMASK_KEYS = ("bitmask", "bitmask_hex")
-_NEW_STYLE_PATTERN_KEYS = ("pattern",)
-
-
-# ---------------------------------------------------------------------------
-# CSV reader
-# ---------------------------------------------------------------------------
-
-
-def _read_csv(path: str) -> list[dict]:
-    rows: list[dict] = []
-    with open(path, newline="") as fh:
-        reader = csv.DictReader(fh)
-        for row in reader:
-            rows.append(row)
-    return rows
-
-
-# ---------------------------------------------------------------------------
-# Row normalisation — handle old broken CSVs where extra fields end up in row[None]
-# ---------------------------------------------------------------------------
-
-
-def _normalise_row(row: dict) -> dict:
-    """Normalise a CSV row so that six-LED fields are accessible by name.
-
-    New-style CSV rows already have ``pattern``, ``bitmask``, ``D0``..``PAR``,
-    etc. as top-level keys.
-
-    Old-style (broken) CSV rows were written with a 6-column header and the
-    six-LED data appended as extra values.  ``csv.DictReader`` puts those
-    values into ``row[None]`` as a list::
-
-        row[None] = [pattern, bitmask, D0, D1, D2, REF, SEQ, PAR,
-                      D0_mean, D1_mean, D2_mean, REF_mean, SEQ_mean, PAR_mean]
-
-    This function detects that case and lifts the values into named keys.
-    """
-    if None not in row:
-        return row
-
-    extra: list[str] = row[None]  # type: ignore[assignment]
-    if not isinstance(extra, list):
-        return row
-
-    n = len(extra)
-    # Heuristic: if we have at least 8 extra values (pattern+bitmask+6 LED bits)
-    # it looks like an old broken six-LED CSV.
-    normalised = dict(row)
-
-    if n >= 1:
-        normalised.setdefault("pattern", extra[0])
-    if n >= 2:
-        normalised.setdefault("bitmask", extra[1])
-    # LED bits: positions 2..7
-    for i, name in enumerate(LED_NAMES):
-        if n > 2 + i:
-            normalised.setdefault(name, extra[2 + i])
-    # LED means: positions 8..13
-    for i, name in enumerate(LED_NAMES):
-        if n > 8 + i:
-            mean_key = f"{name}_mean"
-            normalised.setdefault(mean_key, extra[8 + i])
-
-    return normalised
+# Re-export for backward compatibility with test suite.
+LED_NAMES = LED_NAMES
+_read_csv = read_csv
+_normalise_row = normalise_row
 
 
 # ---------------------------------------------------------------------------
@@ -128,25 +68,10 @@ def _auto_detect(path: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _resolve_bitmask(row: dict) -> str:
-    """Return the bitmask string (hex or pattern) from a normalised row, or ''."""
-    # Prefer explicit bitmask field.
-    for key in _NEW_STYLE_BITMASK_KEYS:
-        val = row.get(key, "")
-        if val:
-            return str(val)
-    # Fall back to pattern field.
-    for key in _NEW_STYLE_PATTERN_KEYS:
-        val = row.get(key, "")
-        if val:
-            return str(val)
-    return ""
-
-
 def summarise(rows: list[dict]) -> dict:
     """Compute summary statistics from a list of log records.
 
-    Rows are normalised via _normalise_row before processing, so both
+    Rows are normalised via ``normalise_row`` before processing, so both
     new-style and old-style (broken) CSVs are handled.
     """
     total = len(rows)
@@ -166,14 +91,8 @@ def summarise(rows: list[dict]) -> dict:
     led_on_counts: dict[str, int] = {name: 0 for name in LED_NAMES}
     led_present_counts: dict[str, int] = {name: 0 for name in LED_NAMES}
 
-    warned_old_style = False
-
     for row in rows:
-        # Normalise for old-style broken CSVs.
-        if None in row and not warned_old_style:
-            warned_old_style = True
-
-        normalised = _normalise_row(row)
+        normalised = normalise_row(row)
 
         # valid
         valid_str = str(normalised.get("valid", "")).lower()
@@ -188,7 +107,9 @@ def summarise(rows: list[dict]) -> dict:
             pass
 
         # bitmask
-        bitmask = _resolve_bitmask(normalised)
+        from robocon_coop_comm.sixled_log import resolve_bitmask
+
+        bitmask = resolve_bitmask(normalised)
         if bitmask:
             bitmask_counter[bitmask] += 1
 
@@ -292,7 +213,7 @@ def main() -> None:
     fmt = args.format or _auto_detect(args.path)
 
     if fmt == "csv":
-        rows = _read_csv(args.path)
+        rows = read_csv(args.path)
     else:
         rows = _read_jsonl(args.path)
 
