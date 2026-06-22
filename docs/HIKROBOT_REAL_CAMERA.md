@@ -237,6 +237,34 @@ pytest test/test_six_led_decoder.py test/test_sixled_log_summary.py -q
 | `--log` | (无) | 日志输出路径 |
 | `--log-format` | csv | csv 或 jsonl |
 
+### 6-LED CSV 日志字段（2026-06-22 已修复）
+
+CSV 日志 header 与数据列完全对齐（20 列）：
+
+```text
+timestamp,msg_id,seq,valid,confidence,latency_ms,
+pattern,bitmask,
+D0,D1,D2,REF,SEQ,PAR,
+D0_mean,D1_mean,D2_mean,REF_mean,SEQ_mean,PAR_mean
+```
+
+| 字段 | 说明 |
+|------|------|
+| `timestamp` | epoch 秒 |
+| `msg_id` | 协议消息 ID（六灯视觉层固定为 0） |
+| `seq` | 序列位（六灯视觉层固定为 0） |
+| `valid` | 解码是否通过 |
+| `confidence` | 置信度 0.0–1.0 |
+| `latency_ms` | 采图→解码延迟 |
+| `pattern` | 六位二进制字符串，如 `111111` / `000001` |
+| `bitmask` | 十六进制字符串，如 `0x3F` / `0x01` |
+| `D0`..`PAR` | 单灯二值（0 或 1） |
+| `D0_mean`..`PAR_mean` | 各 ROI 平均亮度 |
+
+**2026-06-22 修复**：之前 CSV header 只有前 6 列，六灯数据通过 `extra` 追加到行尾但未写入 header。`csv.DictReader` 把多余列放入 `row[None]`，导致 `sixled_log_summary.py` 统计全部为 0。此轮已修复 header/row 对齐。
+
+`sixled_log_summary.py` 同时兼容旧坏 CSV：检测 `row[None]` 并将多余列还原为命名字段。
+
 ### 键盘操作 (六灯)
 
 | 按键 | 功能 |

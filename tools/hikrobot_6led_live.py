@@ -47,6 +47,14 @@ LED_NAMES_6 = ["D0", "D1", "D2", "REF", "SEQ", "PAR"]
 # Bit position for each LED.
 LED_BIT_MAP = {"D0": 0, "D1": 1, "D2": 2, "REF": 3, "SEQ": 4, "PAR": 5}
 
+# Extra columns for CSV logging — must match what we write in log_extra.
+# Header: pattern, bitmask, D0..PAR (bits), D0_mean..PAR_mean (brightness).
+_SIXLED_CSV_EXTRA_COLUMNS = [
+    "pattern", "bitmask",
+    "D0", "D1", "D2", "REF", "SEQ", "PAR",
+    "D0_mean", "D1_mean", "D2_mean", "REF_mean", "SEQ_mean", "PAR_mean",
+]
+
 
 # ---------------------------------------------------------------------------
 # ROI file helpers
@@ -200,7 +208,7 @@ def main() -> None:
     # --- logger ---
     logger: FrameLogger | None = None
     if args.log:
-        logger = FrameLogger(args.log, format=args.log_format)
+        logger = FrameLogger(args.log, format=args.log_format, extra_columns=_SIXLED_CSV_EXTRA_COLUMNS)
         print(f"Logging to {args.log} (format={args.log_format})")
 
     decoder = SixLedRoiDecoder(
@@ -318,11 +326,11 @@ def main() -> None:
                 # --- log ---
                 if logger is not None:
                     log_extra = {
-                        "bitmask": bit_str,
-                        "bitmask_hex": f"0x{bit_val:02X}",
+                        "pattern": bit_str,
+                        "bitmask": f"0x{bit_val:02X}",
                         **{name: reading.bits.get(name, -1) for name in LED_NAMES_6},
                         **{
-                            f"b_{name}": f"{reading.brightness.get(name, 0):.1f}"
+                            f"{name}_mean": f"{reading.brightness.get(name, 0):.1f}"
                             for name in LED_NAMES_6
                         },
                     }

@@ -340,7 +340,7 @@ class TestFrameLogger:
             tmp_path = tmp.name
 
         try:
-            logger = FrameLogger(tmp_path, format="csv")
+            logger = FrameLogger(tmp_path, format="csv", extra_columns=["extra_col"])
             logger.log(
                 msg_id=1, seq=0, valid=True, confidence=1.0, latency_ms=5.0,
                 extra={"extra_col": "hello"},
@@ -349,6 +349,50 @@ class TestFrameLogger:
 
             content = Path(tmp_path).read_text()
             assert "hello" in content
+            # header must include extra_col
+            assert "extra_col" in content.split("\n")[0]
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_csv_extra_columns_header_row_match(self) -> None:
+        """Header row and data row MUST have the same column count."""
+        with tempfile.NamedTemporaryFile(
+            suffix=".csv", mode="w", delete=False
+        ) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            sixled_cols = [
+                "pattern", "bitmask",
+                "D0", "D1", "D2", "REF", "SEQ", "PAR",
+                "D0_mean", "D1_mean", "D2_mean", "REF_mean", "SEQ_mean", "PAR_mean",
+            ]
+            logger = FrameLogger(tmp_path, format="csv", extra_columns=sixled_cols)
+            logger.log(
+                msg_id=0, seq=0, valid=True, confidence=0.5, latency_ms=10.0,
+                extra={
+                    "pattern": "111111", "bitmask": "0x3F",
+                    "D0": 1, "D1": 1, "D2": 1, "REF": 1, "SEQ": 1, "PAR": 1,
+                    "D0_mean": 50.0, "D1_mean": 50.0, "D2_mean": 50.0,
+                    "REF_mean": 50.0, "SEQ_mean": 50.0, "PAR_mean": 50.0,
+                },
+            )
+            logger.close()
+
+            content = Path(tmp_path).read_text()
+            lines = content.strip().split("\n")
+            assert len(lines) == 2  # header + 1 record
+
+            header_cols = lines[0].split(",")
+            data_cols = lines[1].split(",")
+            assert len(header_cols) == len(data_cols), (
+                f"header has {len(header_cols)} cols, data has {len(data_cols)} cols"
+            )
+            # Verify no row[None] would be produced by csv.DictReader
+            import csv, io
+            reader = csv.DictReader(io.StringIO(content))
+            row = next(reader)
+            assert None not in row, f"row[None] detected: {row.get(None)}"
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 

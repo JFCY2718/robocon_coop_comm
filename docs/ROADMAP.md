@@ -104,10 +104,11 @@ python -m robocon_coop_comm.demo_cv
 - ✅ breadboard_roi.json 标定流程已跑通
 - ✅ `MV_FRAME_OUT_INFO_EX` SDK struct 引用错误已修复
 - ✅ `selector` UnboundLocalError 已修复
-- ⬜ 全灭→0x00 验证
+- ✅ Round 4A-logfix: CSV header/row 对齐修复 + summary 兼容旧日志
+- ⬜ 全灭→0x00 验证（需用修复版工具重新采集）
 - ⬜ 全亮→0x3F 验证
 - ⬜ 单灯 0x01/0x02/0x04/0x08/0x10/0x20 验证
-- ⬜ sixled_log_summary.py 真实日志汇总
+- ⬜ sixled_log_summary.py 真实日志汇总（需用修复版工具重新采集）
 - ⚠️ 面包板结构，非最终灯板
 - ⚠️ 当前不接 FSM、不接比赛语义
 - 详见 `docs/HIKROBOT_6LED_BREADBOARD_TEST.md`
