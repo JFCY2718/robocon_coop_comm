@@ -112,6 +112,20 @@ python -m robocon_coop_comm.demo_cv
 - ⚠️ 当前不接 FSM、不接比赛语义
 - 详见 `docs/HIKROBOT_6LED_BREADBOARD_TEST.md`
 
+### Round FSM-A：Mission FSM Safety Hardening ✅
+
+- ✅ R2 FSM: confidence / staleness / low_confidence guard 新增
+- ✅ R2 FSM: local_estop 最高优先级
+- ✅ R2 FSM: RETRY_RESET 恢复从 HOLD/ERROR
+- ✅ R1 FSM: ABORT 专用状态 + RETRY 恢复
+- ✅ R1 FSM: local_estop 最高优先级
+- ✅ BeaconEvent 中间层（视觉→FSM 桥接）
+- ✅ ActionIntent 输出枚举（FSM 不直接驱动硬件）
+- ✅ FSM 安全仿真 demo（26 场景全绿）
+- ✅ pytest 556 passed (新增 99 安全测试)
+- ✅ 文档：FSM_SAFETY_DESIGN, R1_R2_MISSION_FSM, HANDOFF
+- 详见 `docs/FSM_SAFETY_DESIGN.md`
+
 ## M4：ROS2 集成
 
 目标：

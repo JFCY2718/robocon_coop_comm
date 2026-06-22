@@ -776,8 +776,9 @@ class TestVisionCannotBypassSafety:
 class TestRetryReset:
     """RETRY_RESET (MsgID 15) handling.
 
-    Current behaviour: RETRY_RESET has no dedicated handler, falls through
-    to 'no_matching_transition'. Documenting this for future implementation.
+    RETRY_RESET is now in the _SAFETY_OVERRIDE_MSGS set:
+    - From HOLD/ERROR → resets FSM to WAIT_R1.
+    - From any other state → no-op (returns "wait").
     """
 
     def test_retry_reset_from_wait_r1_is_noop(self) -> None:
@@ -785,31 +786,30 @@ class TestRetryReset:
         out = fsm.update(_beacon(MsgID.RETRY_RESET, 0), R2Sensors())
         assert fsm.state == R2State.WAIT_R1
         assert out.action_hint == "wait"
-        assert out.reason == "no_matching_transition"
+        assert out.reason == "retry_reset_noop"
 
-    def test_retry_reset_from_hold_is_blocked(self) -> None:
-        """RETRY_RESET from HOLD is blocked by the safety gate.
-
-        Future: if RETRY_RESET should recover from HOLD, add it to the
-        HOLD/ERROR/ABORT override list in R2MissionFSM.update().
-        """
+    def test_retry_reset_from_hold_recovers_to_wait_r1(self) -> None:
+        """RETRY_RESET from HOLD now correctly recovers to WAIT_R1."""
         fsm = _fsm_at(R2State.HOLD)
         out = fsm.update(_beacon(MsgID.RETRY_RESET, 0), R2Sensors())
-        assert fsm.state == R2State.HOLD
-        assert out.action_hint == "hold_active"
+        assert fsm.state == R2State.WAIT_R1
+        assert out.action_hint == "wait"
+        assert out.reason == "reset"
 
-    def test_retry_reset_from_error_is_blocked(self) -> None:
-        """RETRY_RESET from ERROR is blocked by the safety gate."""
+    def test_retry_reset_from_error_recovers_to_wait_r1(self) -> None:
+        """RETRY_RESET from ERROR now correctly recovers to WAIT_R1."""
         fsm = _fsm_at(R2State.ERROR)
         out = fsm.update(_beacon(MsgID.RETRY_RESET, 0), R2Sensors())
-        assert fsm.state == R2State.ERROR
-        assert out.action_hint == "hold_active"
+        assert fsm.state == R2State.WAIT_R1
+        assert out.action_hint == "wait"
+        assert out.reason == "reset"
 
     def test_retry_reset_from_inserting_is_noop(self) -> None:
         fsm = _fsm_at(R2State.INSERTING)
         out = fsm.update(_beacon(MsgID.RETRY_RESET, 0), R2Sensors())
         assert fsm.state == R2State.INSERTING
         assert out.action_hint == "wait"
+        assert out.reason == "retry_reset_noop"
 
 
 # ===================================================================
@@ -926,7 +926,7 @@ class TestAllMsgIdsFromWaitR1:
             MsgID.IDLE, MsgID.R1_ATTACK_READY, MsgID.R1_WAIT_R2,
             MsgID.LIFT_DOCK_READY, MsgID.R2_ON_LIFT_DETECTED,
             MsgID.TOP_RELEASE_ALLOWED, MsgID.DESCEND_ALLOWED,
-            MsgID.RETRY_RESET, MsgID.DEBUG, MsgID.TEST,
+            MsgID.DEBUG, MsgID.TEST,
         ] + [getattr(MsgID, f"GRID_TARGET_{i}") for i in range(1, 10)]
 
         for msg in unhandled:
@@ -1319,3 +1319,381 @@ class TestSafetyPriorityChain:
         out = fsm.update(_beacon(MsgID.ABORT_CURRENT_TASK, 0), R2Sensors())
         assert out.action_hint == "hold"
         assert out.reason == "ABORT_CURRENT_TASK"
+
+
+# ===================================================================
+# local_estop — highest priority, must override everything
+# ===================================================================
+
+
+class TestLocalEstop:
+    """local_estop is the R2's own emergency stop button.
+
+    It must override EVERYTHING — even valid R1 beacons with all sensors ready.
+    """
+
+    def test_local_estop_from_wait_r1_stops_immediately(self) -> None:
+        fsm = R2MissionFSM()
+        sensors = R2Sensors(local_estop=True)
+        out = fsm.update(_beacon(MsgID.R1_ROD_CLAMPED, 0), sensors)
+        assert fsm.state == R2State.ERROR
+        assert out.action_hint == "stop_all"
+        assert out.reason == "local_estop"
+
+    def test_local_estop_higher_priority_than_remote_estop(self) -> None:
+        """local_estop fires before sensor.estop check in update().
+        Both result in ERROR, but local_estop reason takes precedence."""
+        fsm = R2MissionFSM()
+        sensors = R2Sensors(local_estop=True, estop=True)
+        out = fsm.update(_beacon(MsgID.INSERT_ALLOWED, 0), sensors)
+        assert fsm.state == R2State.ERROR
+        assert out.reason == "local_estop"  # checked first
+
+    def test_local_estop_from_inserting_stops_immediately(self) -> None:
+        sensors = R2Sensors(head_grabbed=True, r1_tag_visible=True, pre_insert_pose_ok=True, local_estop=True)
+        fsm = _fsm_at(R2State.INSERTING, last_msg_id=MsgID.INSERT_ALLOWED, last_seq=1)
+        out = fsm.update(_beacon(MsgID.WEAPON_LOCKED, 0), sensors)
+        assert fsm.state == R2State.ERROR
+        assert out.action_hint == "stop_all"
+
+    def test_local_estop_overrides_valid_beacon(self) -> None:
+        fsm = R2MissionFSM()
+        sensors = R2Sensors(local_estop=True, head_grabbed=True, r1_tag_visible=True, pre_insert_pose_ok=True)
+        out = fsm.update(_beacon(MsgID.INSERT_ALLOWED, 0), sensors)
+        assert fsm.state == R2State.ERROR
+        assert out.action_hint != "insert_head"
+
+    def test_local_estop_wins_over_hold_msg(self) -> None:
+        fsm = _fsm_at(R2State.INSERTING)
+        sensors = R2Sensors(local_estop=True)
+        out = fsm.update(_beacon(MsgID.HOLD, 0), sensors)
+        assert fsm.state == R2State.ERROR
+        assert out.action_hint == "stop_all"
+
+    def test_local_estop_wins_from_any_state(self) -> None:
+        sensors = R2Sensors(local_estop=True)
+        for state in R2State:
+            fsm = _fsm_at(state)
+            out = fsm.update(_beacon(MsgID.INSERT_ALLOWED, 0), sensors)
+            assert fsm.state == R2State.ERROR, f"local_estop from {state} should → ERROR"
+            assert out.action_hint == "stop_all"
+
+
+# ===================================================================
+# Low confidence beacon rejection
+# ===================================================================
+
+
+class TestLowConfidence:
+    """Beacons with confidence below min_confidence must be ignored.
+
+    This guards against noisy/ambiguous vision input triggering transitions.
+    """
+
+    def test_low_confidence_beacon_ignored(self) -> None:
+        fsm = R2MissionFSM(min_confidence=0.7)
+        # Craft a beacon with low confidence via a mock object
+        class _MockBeacon:
+            valid = True
+            msg_id = MsgID.R1_ROD_CLAMPED
+            seq = 0
+            confidence = 0.3  # below threshold
+            timestamp = None
+
+        out = fsm.update(_MockBeacon(), R2Sensors())
+        assert fsm.state == R2State.WAIT_R1  # unchanged
+        assert out.action_hint == "ignore"
+        assert out.reason == "low_confidence"
+
+    def test_confidence_at_threshold_is_accepted(self) -> None:
+        fsm = R2MissionFSM(min_confidence=0.7)
+
+        class _MockBeacon:
+            valid = True
+            msg_id = MsgID.R1_ROD_CLAMPED
+            seq = 0
+            confidence = 0.7  # exactly at threshold
+            timestamp = None
+
+        out = fsm.update(_MockBeacon(), R2Sensors())
+        assert fsm.state == R2State.PREPARE_HEAD  # accepted
+        assert out.action_hint == "grab_head"
+
+    def test_high_confidence_beacon_accepted(self) -> None:
+        fsm = R2MissionFSM(min_confidence=0.7)
+
+        class _MockBeacon:
+            valid = True
+            msg_id = MsgID.HOLD
+            seq = 0
+            confidence = 0.95
+            timestamp = None
+
+        out = fsm.update(_MockBeacon(), R2Sensors())
+        assert fsm.state == R2State.HOLD  # accepted
+        assert out.action_hint == "hold"
+
+    def test_default_min_confidence_is_0_7(self) -> None:
+        fsm = R2MissionFSM()
+        assert fsm.min_confidence == 0.7
+
+    def test_custom_min_confidence(self) -> None:
+        fsm = R2MissionFSM(min_confidence=0.9)
+        assert fsm.min_confidence == 0.9
+
+    def test_zero_confidence_always_ignored(self) -> None:
+        fsm = R2MissionFSM(min_confidence=0.1)
+
+        class _MockBeacon:
+            valid = True
+            msg_id = MsgID.HOLD
+            seq = 0
+            confidence = 0.0
+            timestamp = None
+
+        out = fsm.update(_MockBeacon(), R2Sensors())
+        assert fsm.state == R2State.WAIT_R1
+        assert out.action_hint == "ignore"
+        assert out.reason == "low_confidence"
+
+    def test_low_confidence_does_not_override_estop(self) -> None:
+        """ESTOP must still fire even if beacon has low confidence (ESTOP is checked first)."""
+        fsm = R2MissionFSM(min_confidence=0.7)
+        sensors = R2Sensors(estop=True)
+
+        class _MockBeacon:
+            valid = True
+            msg_id = MsgID.R1_ROD_CLAMPED
+            seq = 0
+            confidence = 0.01
+            timestamp = None
+
+        out = fsm.update(_MockBeacon(), sensors)
+        # ESTOP fires before low_confidence check
+        assert fsm.state == R2State.ERROR
+        assert out.action_hint == "stop_all"
+
+
+# ===================================================================
+# Stale beacon rejection
+# ===================================================================
+
+
+class TestStaleBeacon:
+    """Beacons with timestamps older than max_age_s must be ignored.
+
+    This prevents old/queued messages from triggering actions after the
+    situation has changed.
+    """
+
+    def test_stale_beacon_ignored(self) -> None:
+        fsm = R2MissionFSM(max_age_s=2.0)
+        old_ts = 0.0  # very old
+
+        class _MockBeacon:
+            valid = True
+            msg_id = MsgID.R1_ROD_CLAMPED
+            seq = 0
+            confidence = 0.9
+            timestamp = old_ts
+
+        out = fsm.update(_MockBeacon(), R2Sensors())
+        assert fsm.state == R2State.WAIT_R1  # unchanged
+        assert out.action_hint == "ignore"
+        assert out.reason == "stale_beacon"
+
+    def test_fresh_beacon_accepted(self) -> None:
+        import time
+        fsm = R2MissionFSM(max_age_s=2.0)
+        fresh_ts = time.monotonic()
+
+        class _MockBeacon:
+            valid = True
+            msg_id = MsgID.R1_ROD_CLAMPED
+            seq = 0
+            confidence = 0.9
+            timestamp = fresh_ts
+
+        out = fsm.update(_MockBeacon(), R2Sensors())
+        assert fsm.state == R2State.PREPARE_HEAD  # accepted
+        assert out.action_hint == "grab_head"
+
+    def test_no_timestamp_beacon_accepted(self) -> None:
+        """Beacons without timestamp are assumed fresh — no staleness check."""
+        fsm = R2MissionFSM(max_age_s=2.0)
+
+        class _MockBeacon:
+            valid = True
+            msg_id = MsgID.R1_ROD_CLAMPED
+            seq = 0
+            confidence = 0.9
+            timestamp = None
+
+        out = fsm.update(_MockBeacon(), R2Sensors())
+        assert fsm.state == R2State.PREPARE_HEAD  # accepted
+
+    def test_default_max_age_is_2_seconds(self) -> None:
+        fsm = R2MissionFSM()
+        assert fsm.max_age_s == 2.0
+
+    def test_custom_max_age(self) -> None:
+        fsm = R2MissionFSM(max_age_s=5.0)
+        assert fsm.max_age_s == 5.0
+
+    def test_max_age_zero_disables_staleness_check(self) -> None:
+        """max_age_s=0 means disable staleness check — all timestamps accepted."""
+        fsm = R2MissionFSM(max_age_s=0.0)
+
+        class _MockBeacon:
+            valid = True
+            msg_id = MsgID.R1_ROD_CLAMPED
+            seq = 0
+            confidence = 0.9
+            timestamp = 0.0  # ancient
+
+        out = fsm.update(_MockBeacon(), R2Sensors())
+        assert fsm.state == R2State.PREPARE_HEAD  # accepted (staleness disabled)
+
+    def test_stale_beacon_does_not_override_estop(self) -> None:
+        """ESTOP fires before staleness check."""
+        fsm = R2MissionFSM(max_age_s=2.0)
+        sensors = R2Sensors(estop=True)
+
+        class _MockBeacon:
+            valid = True
+            msg_id = MsgID.R1_ROD_CLAMPED
+            seq = 0
+            confidence = 0.9
+            timestamp = 0.0
+
+        out = fsm.update(_MockBeacon(), sensors)
+        assert fsm.state == R2State.ERROR
+        assert out.action_hint == "stop_all"
+
+
+# ===================================================================
+# RETRY_RESET recovery from HOLD/ERROR
+# ===================================================================
+
+
+class TestRetryResetRecovery:
+    """RETRY_RESET now recovers R2 from HOLD/ERROR back to WAIT_R1."""
+
+    def test_retry_reset_from_hold_resets_fsm(self) -> None:
+        fsm = _fsm_at(R2State.HOLD)
+        out = fsm.update(_beacon(MsgID.RETRY_RESET, 0), R2Sensors())
+        assert fsm.state == R2State.WAIT_R1
+        assert out.action_hint == "wait"
+        assert out.reason == "reset"
+
+    def test_retry_reset_from_error_resets_fsm(self) -> None:
+        fsm = _fsm_at(R2State.ERROR)
+        out = fsm.update(_beacon(MsgID.RETRY_RESET, 0), R2Sensors())
+        assert fsm.state == R2State.WAIT_R1
+        assert out.action_hint == "wait"
+        assert out.reason == "reset"
+
+    def test_after_retry_reset_can_resume_normal_flow(self) -> None:
+        """After RETRY_RESET, R2 can respond to normal beacons again."""
+        fsm = _fsm_at(R2State.HOLD)
+        fsm.update(_beacon(MsgID.RETRY_RESET, 0), R2Sensors())
+        assert fsm.state == R2State.WAIT_R1
+        # Now R1_ROD_CLAMPED should work
+        out = fsm.update(_beacon(MsgID.R1_ROD_CLAMPED, 1), R2Sensors())
+        assert fsm.state == R2State.PREPARE_HEAD
+        assert out.action_hint == "grab_head"
+
+    def test_retry_reset_from_non_safety_state_is_noop(self) -> None:
+        """RETRY_RESET outside HOLD/ERROR is a no-op."""
+        for state in (R2State.WAIT_R1, R2State.INSERTING, R2State.HEAD_RELEASED,
+                       R2State.READY_TO_LEAVE_MC, R2State.READY_TO_ENTER_MF):
+            fsm = _fsm_at(state)
+            out = fsm.update(_beacon(MsgID.RETRY_RESET, 0), R2Sensors())
+            assert fsm.state == state, f"RETRY_RESET from {state} should be no-op"
+            assert out.action_hint == "wait"
+            assert out.reason == "retry_reset_noop"
+
+
+# ===================================================================
+# Combined guard priority — all safety checks working together
+# ===================================================================
+
+
+class TestGuardPriorityChain:
+    """Verify the full guard priority chain in R2MissionFSM.update().
+
+    Execution order:
+    1. local_estop → ERROR
+    2. sensor.estop → ERROR
+    3. !beacon.valid → ignore
+    4. unknown msg_id → ignore
+    5. low confidence → ignore
+    6. stale timestamp → ignore
+    7. HOLD/ERROR/ABORT/RETRY_RESET → safety override
+    8. safety gate (HOLD/ERROR blocks normal msgs)
+    9. normal transitions with local guard
+    """
+
+    def test_local_estop_before_everything(self) -> None:
+        """local_estop fires before estop, before any beacon check."""
+        fsm = _fsm_at(R2State.INSERTING)
+        sensors = R2Sensors(local_estop=True, estop=True,
+                            head_grabbed=True, r1_tag_visible=True, pre_insert_pose_ok=True)
+
+        class _MockBeacon:
+            valid = False  # invalid beacon
+            msg_id = 99  # unknown
+            seq = 0
+            confidence = 0.0
+            timestamp = None
+
+        out = fsm.update(_MockBeacon(), sensors)
+        assert fsm.state == R2State.ERROR
+        assert out.reason == "local_estop"
+
+    def test_estop_before_invalid_beacon(self) -> None:
+        fsm = _fsm_at(R2State.INSERTING)
+        sensors = R2Sensors(estop=True)
+        out = fsm.update(_invalid_beacon(), sensors)
+        assert fsm.state == R2State.ERROR
+        assert out.action_hint == "stop_all"
+
+    def test_low_confidence_beacon_not_blocked_by_safety_gate(self) -> None:
+        """Low confidence is checked BEFORE the safety gate.
+        A low-confidence beacon from HOLD should get 'ignore', not 'hold_active'."""
+        fsm = _fsm_at(R2State.HOLD)
+
+        class _MockBeacon:
+            valid = True
+            msg_id = MsgID.INSERT_ALLOWED
+            seq = 0
+            confidence = 0.01
+            timestamp = None
+
+        out = fsm.update(_MockBeacon(), R2Sensors())
+        # Low confidence → "ignore" (not "hold_active")
+        assert out.action_hint == "ignore"
+        assert out.reason == "low_confidence"
+
+    def test_stale_beacon_not_blocked_by_safety_gate(self) -> None:
+        """Staleness is checked BEFORE the safety gate."""
+        fsm = _fsm_at(R2State.HOLD)
+
+        class _MockBeacon:
+            valid = True
+            msg_id = MsgID.INSERT_ALLOWED
+            seq = 0
+            confidence = 0.9
+            timestamp = 0.0  # ancient
+
+        out = fsm.update(_MockBeacon(), R2Sensors())
+        assert out.action_hint == "ignore"
+        assert out.reason == "stale_beacon"
+
+    def test_backward_compat_protocol_decoded_beacon_still_works(self) -> None:
+        """Existing protocol.DecodedBeacon objects (no confidence/timestamp) still work.
+        They default to confidence=1.0, timestamp=None → always pass guards."""
+        fsm = R2MissionFSM()
+        out = fsm.update(_beacon(MsgID.R1_ROD_CLAMPED, 0), R2Sensors())
+        assert fsm.state == R2State.PREPARE_HEAD
+        assert out.action_hint == "grab_head"

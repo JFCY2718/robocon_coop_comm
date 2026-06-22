@@ -22,6 +22,7 @@ class R1State(Enum):
     R1_CLEAR_MC = auto()
     R1_IN_MF = auto()
     HOLD = auto()
+    ABORT = auto()
     ERROR = auto()
 
 
@@ -32,6 +33,7 @@ class OperatorCommand(Enum):
     HOLD = auto()
     RESET = auto()
     ABORT = auto()
+    RETRY = auto()  # recover from ABORT back to WAIT_START
 
 
 @dataclass
@@ -46,6 +48,7 @@ class R1Sensors:
     r1_clear_mc: bool = False
     r1_in_mf: bool = False
     estop: bool = False
+    local_estop: bool = False  # local emergency stop button
 
 
 @dataclass(frozen=True)
@@ -85,24 +88,52 @@ class R1MissionFSM:
         This matches the intended remote-control model: few buttons, guarded state changes.
         """
 
+        # ── local_estop: highest priority ─────────────────────────────
+        if sensors.local_estop:
+            self.state = R1State.ERROR
+            self._set_msg(MsgID.ERROR)
+            return self.output("local_estop")
+
+        # ── estop from R1 sensors ─────────────────────────────────────
         if sensors.estop:
             self.state = R1State.ERROR
             self._set_msg(MsgID.ERROR)
             return self.output("estop")
 
+        # ── RESET always available (recover from HOLD/ABORT/ERROR) ────
         if command == OperatorCommand.RESET:
             return self.reset()
 
+        # ── RETRY: recover from ABORT back to WAIT_START ──────────────
+        if command == OperatorCommand.RETRY:
+            if self.state == R1State.ABORT:
+                return self.reset()
+            return self.output("retry_noop")
+
+        # ── HOLD ──────────────────────────────────────────────────────
         if command == OperatorCommand.HOLD:
             self.state = R1State.HOLD
             self._set_msg(MsgID.HOLD)
             return self.output("operator_hold")
 
+        # ── ABORT: dedicated state ────────────────────────────────────
         if command == OperatorCommand.ABORT:
-            self.state = R1State.HOLD
+            self.state = R1State.ABORT
             self._set_msg(MsgID.ABORT_CURRENT_TASK)
             return self.output("operator_abort")
 
+        # ── HOLD / ABORT / ERROR states block normal commands ─────────
+        if self.state in (R1State.HOLD, R1State.ABORT, R1State.ERROR):
+            if self.state == R1State.HOLD:
+                self._set_msg(MsgID.HOLD)
+                return self.output("hold_requires_reset")
+            if self.state == R1State.ABORT:
+                self._set_msg(MsgID.ABORT_CURRENT_TASK)
+                return self.output("abort_requires_retry")
+            self._set_msg(MsgID.ERROR)
+            return self.output("error_requires_reset")
+
+        # ── START from WAIT_START ─────────────────────────────────────
         if command == OperatorCommand.START and self.state == R1State.WAIT_START:
             self.state = R1State.PICK_ROD
             self._set_msg(MsgID.IDLE)
@@ -111,7 +142,7 @@ class R1MissionFSM:
         if command != OperatorCommand.NEXT:
             return self.output("no_transition")
 
-        # Guarded NEXT transitions.
+        # ── Guarded NEXT transitions ──────────────────────────────────
         if self.state == R1State.WAIT_START:
             self.state = R1State.PICK_ROD
             self._set_msg(MsgID.IDLE)
@@ -165,14 +196,5 @@ class R1MissionFSM:
                 return self.output("r1_in_mf")
             self._set_msg(MsgID.R1_CLEAR_MC)
             return self.output("wait_in_mf")
-
-        if self.state == R1State.HOLD:
-            # NEXT resumes from HOLD to the nearest safe idle stage. Use RESET for full restart.
-            self._set_msg(MsgID.HOLD)
-            return self.output("hold_requires_reset")
-
-        if self.state == R1State.ERROR:
-            self._set_msg(MsgID.ERROR)
-            return self.output("error_requires_reset")
 
         return self.output("unhandled")

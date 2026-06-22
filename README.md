@@ -5,14 +5,20 @@ ROBOCON 2026「武林探秘」R1/R2 两机协作通信项目。
 **通信方案：AprilTag 定位 + LED 二进制光码。**
 R1 通过 LED 光码板发出状态信号，R2 通过摄像头 + AprilTag 检测解码。
 
-> 📌 **当前状态（2026-06-20）**：
-> - ✅ 软件协议与状态机已完成 (484 tests passed)
+> 📌 **当前状态（2026-06-22）**：
+> - ✅ 软件协议与状态机已完成 (556 tests passed)
 > - ✅ STM32F103 + 三灯串口闭环已实机验证通过，ACK 正常
 > - ✅ STM32 六灯全部可点亮 (PA0-PA5)
 > - ✅ M3-1：Hikrobot 三灯识别已工程化
 > - ✅ M3-2：AprilTag 检测 + 透视矫正 + LED ROI 自动采样（软件）
-> - ✅ M3-4：R2 FSM HOLD/ERROR 安全门控已修复
+> - ✅ M3-3：R2 FSM HOLD/ERROR 安全门控
 > - ✅ M3-5：六灯 ROI 识别 + PatternMapper + 实时工具（软件）
+> - ✅ **Round FSM-A**：R1/R2 Mission FSM safety hardening
+>   - R2 FSM: confidence / staleness / local_estop guards
+>   - R1 FSM: ABORT 状态 + local_estop
+>   - BeaconEvent 中间层 + ActionIntent 输出枚举
+>   - RETRY_RESET 恢复支持
+>   - FSM 安全仿真 demo (26 场景)
 > - 🔬 **Round 4A：Hikrobot 真实相机六灯面包板 bitmask smoke test 进行中**
 > - ⚠️ 面包板测试，非最终灯板结构
 > - ⚠️ 当前不接 FSM 真实动作，只验证 LED bitmask 识别
@@ -89,6 +95,9 @@ pip install -e ".[dev,vision]"
 ```bash
 # 命令行闭环演示（不需要硬件）
 python -m robocon_coop_comm.demo_cli
+
+# FSM 安全仿真演示（26 安全场景）
+python -m robocon_coop_comm.demo_fsm_safety
 
 # OpenCV 虚拟信标窗口（需要图形界面）
 python -m robocon_coop_comm.demo_cv
@@ -370,6 +379,9 @@ COMMAND_MAP: dict[str, MsgID] = {
 | [DOJO_END_TO_END.md](docs/DOJO_END_TO_END.md) | 武馆端到端 pipeline |
 | [MCU_PIPELINE_SIM.md](docs/MCU_PIPELINE_SIM.md) | MCU pipeline 模拟 |
 | [PERFORMANCE_BENCHMARK.md](docs/PERFORMANCE_BENCHMARK.md) | 性能 benchmark |
+| [FSM_SAFETY_DESIGN.md](docs/FSM_SAFETY_DESIGN.md) | FSM 安全设计文档 🆕 |
+| [R1_R2_MISSION_FSM.md](docs/R1_R2_MISSION_FSM.md) | R1/R2 FSM 详细文档 🆕 |
+| [HANDOFF_TO_NEXT_CC_SESSION.md](docs/HANDOFF_TO_NEXT_CC_SESSION.md) | CC 交接文档 🆕 |
 | [ROADMAP.md](docs/ROADMAP.md) | 项目路线图 |
 | [LOCAL_DEV_UBUNTU22.md](docs/LOCAL_DEV_UBUNTU22.md) | Ubuntu 22.04 开发环境配置 |
 
