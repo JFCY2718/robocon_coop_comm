@@ -348,6 +348,25 @@ sudo dmesg -w
 
 ---
 
+## Serial sequence sender
+
+Use the default `ascii` protocol for the STM32F103 breadboard test firmware. It sends decimal newline frames such as `"63\n"` and keeps the expected CSV at one row per held bitmask.
+
+```bash
+python tools/sixled_serial_sequence.py \
+  --protocol ascii \
+  --port /dev/ttyACM0 \
+  --baud 115200 \
+  --values 0,63,1,2,4,8,16,32 \
+  --hold-sec 5 \
+  --refresh-sec 0.2 \
+  --log data/sixled/logs/round4b_expected.csv
+```
+
+Do not use `--protocol rscontrol2` for the STM32F103 breadboard firmware; that mode is for Rscontrol2 F407 0xBC beacon frames.
+
+---
+
 ## 下一步计划
 
 ```

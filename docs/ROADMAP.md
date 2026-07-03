@@ -115,6 +115,7 @@ python -m robocon_coop_comm.demo_cv
 ### Round 4B：Six-LED Expected-vs-Observed Validation ✅ 🆕
 
 - ✅ `tools/sixled_serial_sequence.py` — STM32 串口序列发送 + expected CSV 生成
+- ✅ `tools/sixled_serial_sequence.py` supports `--protocol ascii` for STM32F103 breadboard tests and `--protocol rscontrol2` for Rscontrol2 F407 `BC 00 mask seq 55` frames.
 - ✅ `tools/sixled_expected_observed_check.py` — expected vs observed 时间窗口比对
 - ✅ `robocon_coop_comm/sixled_log.py` — 共享模块（normalise_row, bitmask helpers）
 - ✅ 测试覆盖：bitmask→pattern, old CSV 兼容, dominant matching, settle-sec, FAIL 分支

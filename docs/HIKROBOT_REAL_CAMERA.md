@@ -431,11 +431,23 @@ python tools/hikrobot_6led_live.py \
 
 ```bash
 python tools/sixled_serial_sequence.py \
-  --port /dev/ttyACM0 --baud 115200 \
+  --protocol ascii --port /dev/ttyACM0 --baud 115200 \
   --values 0,63,1,2,4,8,16,32 \
-  --hold-sec 5 --warmup-sec 2 \
+  --hold-sec 5 --refresh-sec 0.2 --warmup-sec 2 \
   --log data/sixled/logs/round4b_expected.csv
 ```
+
+For Rscontrol2 F407 firmware, send the 0xBC beacon frame directly:
+
+```bash
+python tools/sixled_serial_sequence.py \
+  --protocol rscontrol2 --port COM3 --baud 115200 \
+  --values 0,63,1,2,4,8,16,32 \
+  --hold-sec 5 --refresh-sec 0.2 --warmup-sec 2 \
+  --log data/sixled/logs/round4b_expected_rscontrol2.csv
+```
+
+`ascii` sends decimal newline frames such as `"63\n"` for the STM32F103 breadboard test firmware. `rscontrol2` sends `BC 00 mask seq 55`; refresh is required because the F407 beacon timeout is 1000 ms.
 
 **Step 3**：运行 checker 比对
 

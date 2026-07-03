@@ -275,11 +275,20 @@ python tools/send_3led_msg.py --port /dev/ttyACM0 --msg-id 0 --seq 0 --brightnes
 
 # Round 4B：六灯自动化 expected-vs-observed 验证 🆕
 python tools/sixled_serial_sequence.py \
-  --port /dev/ttyACM0 --values 0,63,1,2,4,8,16,32 \
-  --hold-sec 5 --log data/sixled/logs/round4b_expected.csv
+  --protocol ascii --port /dev/ttyACM0 --values 0,63,1,2,4,8,16,32 \
+  --hold-sec 5 --refresh-sec 0.2 --log data/sixled/logs/round4b_expected.csv
+python tools/sixled_serial_sequence.py \
+  --protocol rscontrol2 --port COM3 --baud 115200 \
+  --values 0,63,1,2,4,8,16,32 --hold-sec 5 --refresh-sec 0.2 \
+  --log data/sixled/logs/round4b_expected_rscontrol2.csv
 python tools/sixled_expected_observed_check.py \
   --expected data/sixled/logs/round4b_expected.csv \
   --observed data/sixled/logs/round4b_t40_e12000.csv
+
+# sixled_serial_sequence.py defaults to --protocol ascii for the STM32F103
+# breadboard firmware ("63\n" style frames). Use --protocol rscontrol2 for
+# Rscontrol2 F407 0xBC frames: BC 00 mask seq 55. F407 camera tests should use
+# --hold-sec 5 --refresh-sec 0.2 because beacon timeout is 1000 ms.
 
 # Hikrobot 三灯实时解码（需相机 + SDK）
 python tools/hikrobot_3led_live.py
