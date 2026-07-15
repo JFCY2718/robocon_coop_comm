@@ -23,7 +23,6 @@ class CameraCalibration:
             self.camera_matrix[0][2],
             self.camera_matrix[1][2],
         )
-
     @classmethod
     def from_json(cls, path: str | Path) -> "CameraCalibration":
         with Path(path).open(encoding="utf-8") as handle:
@@ -40,4 +39,3 @@ class CameraCalibration:
             camera_matrix=matrix,
             dist_coeffs=tuple(float(value) for value in data.get("dist_coeffs", ())),
         )
-

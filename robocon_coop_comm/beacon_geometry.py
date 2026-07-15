@@ -77,4 +77,3 @@ class BeaconGeometry:
                     (str(name), float(x), float(y)) for name, x, y in leds
                 )
         return cls(**values)
-
