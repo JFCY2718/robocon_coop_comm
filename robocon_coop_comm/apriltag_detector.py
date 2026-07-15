@@ -33,6 +33,12 @@ class TagDetection:
     corners: list[tuple[float, float]]
     center: tuple[float, float]
     decision_margin: float = 0.0
+    hamming: int = 0
+    homography: object | None = None
+    pose_R: object | None = None
+    pose_t: object | None = None
+    valid: bool = True
+    reason: str = ""
     # Extra fields the underlying library may set.
     extra: dict = field(default_factory=dict)
 
@@ -75,7 +81,14 @@ class ApriltagDetector:
     # public
     # ------------------------------------------------------------------
 
-    def detect(self, image) -> list[TagDetection]:
+    def detect(
+        self,
+        image,
+        *,
+        estimate_pose: bool = False,
+        camera_params: tuple[float, float, float, float] | None = None,
+        tag_size_m: float | None = None,
+    ) -> list[TagDetection]:
         """Run AprilTag detection on a grayscale/BGR image.
 
         Args:
@@ -94,7 +107,20 @@ class ApriltagDetector:
         else:
             gray = image
 
-        raw = det.detect(gray)
+        if estimate_pose:
+            if camera_params is None or tag_size_m is None or tag_size_m <= 0:
+                raise ValueError(
+                    "estimate_pose requires camera_params=(fx, fy, cx, cy) "
+                    "and a positive tag_size_m"
+                )
+            raw = det.detect(
+                gray,
+                estimate_tag_pose=True,
+                camera_params=camera_params,
+                tag_size=tag_size_m,
+            )
+        else:
+            raw = det.detect(gray)
 
         results: list[TagDetection] = []
         for r in raw:
@@ -107,6 +133,10 @@ class ApriltagDetector:
                     corners=corners,
                     center=center,
                     decision_margin=float(getattr(r, "decision_margin", 0.0)),
+                    hamming=int(getattr(r, "hamming", 0)),
+                    homography=getattr(r, "homography", None),
+                    pose_R=getattr(r, "pose_R", None),
+                    pose_t=getattr(r, "pose_t", None),
                 )
             )
         return results

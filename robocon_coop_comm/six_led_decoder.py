@@ -69,11 +69,15 @@ class SixLedRoiDecoder:
         roi_size: int = 24,
         min_roi_brightness: float = 5.0,
         max_roi_brightness: float = 250.0,
+        sample_shape: str = "square",
     ) -> None:
         self.threshold = int(threshold)
         self.roi_size = int(roi_size)
         self._min_brightness = float(min_roi_brightness)
         self._max_brightness = float(max_roi_brightness)
+        if sample_shape not in {"square", "circle"}:
+            raise ValueError("sample_shape must be 'square' or 'circle'")
+        self.sample_shape = sample_shape
 
     def decode(
         self,
@@ -111,7 +115,10 @@ class SixLedRoiDecoder:
                 brightness[rp.name] = 0.0
                 continue
 
-            b = roi_mean(image, rp.x_px, rp.y_px, rp.radius_px * 2)
+            if self.sample_shape == "circle":
+                b = _circle_roi_mean(image, rp.x_px, rp.y_px, rp.radius_px)
+            else:
+                b = roi_mean(image, rp.x_px, rp.y_px, rp.radius_px * 2)
             brightness[rp.name] = float(b)
             bits[rp.name] = 1 if b > self.threshold else 0
 
@@ -131,6 +138,23 @@ class SixLedRoiDecoder:
             frame_id=frame.frame_id,
         )
 
+
+def _circle_roi_mean(image, x_px: int, y_px: int, radius_px: int) -> float:
+    """Return mean grayscale intensity inside a circular pixel ROI."""
+    import cv2
+    import numpy as np
+
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+    height, width = gray.shape[:2]
+    radius = max(1, int(radius_px))
+    x0, x1 = max(0, x_px - radius), min(width, x_px + radius + 1)
+    y0, y1 = max(0, y_px - radius), min(height, y_px + radius + 1)
+    if x0 >= x1 or y0 >= y1:
+        return 0.0
+    yy, xx = np.ogrid[y0:y1, x0:x1]
+    mask = (xx - x_px) ** 2 + (yy - y_px) ** 2 <= radius**2
+    values = gray[y0:y1, x0:x1][mask]
+    return float(values.mean()) if values.size else 0.0
 
 # ---------------------------------------------------------------------------
 # helpers

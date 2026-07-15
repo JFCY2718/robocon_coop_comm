@@ -290,10 +290,35 @@ python tools/sixled_expected_observed_check.py \
 # Rscontrol2 F407 0xBC frames: BC 00 mask seq 55. F407 camera tests should use
 # --hold-sec 5 --refresh-sec 0.2 because beacon timeout is 1000 ms.
 
+# Hikrobot 六灯固定 ROI（保持原路径）
+python3 tools/hikrobot_6led_live.py \
+  --roi-mode fixed --roi-file data/sixled/configs/site_roi.json \
+  --threshold 60 --exposure 8000 --gain 0 --timeout 5000 --protocol
+
+# Hikrobot AprilTag 动态六灯 ROI
+python3 tools/hikrobot_6led_live.py \
+  --roi-mode apriltag --tag-family tag36h11 --tag-id 0 --tag-size 0.150 \
+  --tag-min-margin 30 --tag-max-hamming 0 --roi-radius-scale 0.65 \
+  --tag-lost-frames 5 --threshold 60 --exposure 8000 --gain 0 --timeout 5000 \
+  --draw-tag --draw-dynamic-rois --protocol
+
+# 离线图片；不初始化 MVS SDK，也不打开相机
+python3 tools/hikrobot_6led_live.py \
+  --image sample.jpg --roi-mode apriltag --draw-tag --draw-dynamic-rois \
+  --output-image /tmp/apriltag_sixled_debug.jpg
+
+# pose 只有提供真实标定文件时才启用
+python3 tools/hikrobot_6led_live.py \
+  --roi-mode apriltag --camera-calibration camera_calibration.json --pose
+
 # Hikrobot 三灯实时解码（需相机 + SDK）
 python tools/hikrobot_3led_live.py
 python tools/hikrobot_3led_live.py --threshold 100 --log /tmp/beacon.csv
 ```
+
+AprilTag 六灯几何、安装尺寸、标定文件格式和现场验收步骤见
+[APRILTAG_SIXLED_VISION.md](docs/APRILTAG_SIXLED_VISION.md)。动态识别输出仍只是视觉事件，
+不能绕过 R2 本地传感器和任务状态机直接驱动执行机构。
 
 ### 交互控制台命令
 
