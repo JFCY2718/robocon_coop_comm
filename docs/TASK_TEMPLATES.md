@@ -51,6 +51,10 @@ Report as BLOCKER / WARNING / OK.
 
 ## Ubuntu handoff template
 
+The current hardware handoff, frozen branch SHAs and execution phases are in
+`docs/UBUNTU_HARDWARE_HANDOFF.md`. Use that file as the source of truth for the
+four-light hardware-validation phase.
+
 ```text
 Generate a Windows-to-Ubuntu handoff checklist for the current branch.
 Include:
