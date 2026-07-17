@@ -519,6 +519,15 @@ int main(void)
 /* Stack top (end of 20 KB SRAM on STM32F103C8T6) */
 #define SRAM_END  0x20005000UL
 
+/*
+ * Linker-defined symbols from stm32f103c8.ld.
+ * _sbss / _ebss delimit the .bss section in SRAM — must be zeroed on reset.
+ */
+extern uint32_t _sbss;
+extern uint32_t _ebss;
+
+/* Forward declarations for exception handlers */
+void Reset_Handler(void);
 void NMI_Handler(void);
 void HardFault_Handler(void);
 void MemManage_Handler(void);
@@ -533,7 +542,7 @@ void SysTick_Handler(void);
 __attribute__((section(".vectors"), used))
 const uint32_t vector_table[] = {
     SRAM_END,
-    (uint32_t)main,
+    (uint32_t)Reset_Handler,
     (uint32_t)NMI_Handler,
     (uint32_t)HardFault_Handler,
     (uint32_t)MemManage_Handler,
@@ -546,6 +555,28 @@ const uint32_t vector_table[] = {
     (uint32_t)PendSV_Handler,
     (uint32_t)SysTick_Handler,
 };
+
+/*
+ * Reset_Handler is the hardware entry point called after reset.
+ * It must zero .bss before handing control to main(), otherwise
+ * uninitialised static variables (system_ms, watchdog, etc.) can
+ * contain random SRAM garbage and cause undefined behaviour on real
+ * hardware.
+ *
+ * The .data section is empty in this firmware so a copy loop from
+ * flash is not needed — if any initialised globals are added later,
+ * a flash-to-SRAM copy must be inserted here.
+ */
+void Reset_Handler(void)
+{
+    uint32_t *bss = &_sbss;
+    while (bss < &_ebss) {
+        *bss++ = 0U;
+    }
+    main();
+    /* main() never returns; loop here to satisfy the compiler */
+    for (;;) {}
+}
 
 /* Default handlers for unused exceptions / interrupts */
 void __attribute__((weak)) Default_Handler(void) { for (;;) {} }
