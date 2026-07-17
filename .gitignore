@@ -23,6 +23,13 @@ log/
 .env
 *.key
 
+# STM32 firmware build artifacts
+firmware/**/*.elf
+firmware/**/*.bin
+firmware/**/*.hex
+firmware/**/*.map
+firmware/**/*.o
+
 # SixLED hardware test data — keep configs, ignore runtime artifacts
 data/sixled/logs/*
 !data/sixled/logs/.gitkeep
