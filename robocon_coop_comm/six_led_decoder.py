@@ -259,3 +259,44 @@ def six_led_to_decoded_beacon(
         reason="" if proto.valid else "parity_or_ref_failed",
         raw_bits=dict(proto.bits),
     )
+
+
+def six_led_to_coop_beacon(
+    reading: SixLedReading,
+    source: str = "6led_decoder_v2",
+) -> DecodedBeacon:
+    """Decode D0-D3/REF/PAR as the selected 16-state level protocol."""
+    from .coop_protocol_v2 import bits_to_mask, decode_mask
+
+    try:
+        decoded = decode_mask(bits_to_mask(reading.bits))
+    except ValueError as exc:
+        return DecodedBeacon(
+            msg_id=0,
+            msg_name="IDLE",
+            seq=0,
+            valid=False,
+            confidence=reading.confidence,
+            source=source,
+            reason=f"protocol_input_error: {exc}",
+        )
+
+    message_id = int(decoded.message) if decoded.message is not None else 0
+    message_name = decoded.message.name if decoded.message is not None else "INVALID"
+    valid = decoded.valid and reading.valid
+    if not decoded.valid:
+        reason = decoded.reason
+    elif not reading.valid:
+        reason = "vision_invalid"
+    else:
+        reason = ""
+    return DecodedBeacon(
+        msg_id=message_id,
+        msg_name=message_name,
+        seq=0,
+        valid=valid,
+        confidence=reading.confidence,
+        source=source,
+        reason=reason,
+        raw_bits=decoded.bits,
+    )

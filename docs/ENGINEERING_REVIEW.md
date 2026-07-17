@@ -20,8 +20,8 @@ Confirm fixed six-led order remains:
 D0  bit0 0x01
 D1  bit1 0x02
 D2  bit2 0x04
-REF bit3 0x08
-SEQ bit4 0x10
+D3  bit3 0x08
+REF bit4 0x10
 PAR bit5 0x20
 ```
 

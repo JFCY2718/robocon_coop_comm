@@ -5,15 +5,15 @@ Opens a Hikrobot camera, lets the user click 6 LED positions or load them from
 a JSON ROI file, and displays live decoding results.  All reusable logic lives
 in ``robocon_coop_comm.six_led_decoder`` and ``robocon_coop_comm.pattern_mapper``.
 
-LED order (click sequence / ROI file):  D0  D1  D2  REF  SEQ  PAR
+LED order (click sequence / ROI file):  D0  D1  D2  D3  REF  PAR
 
 Bitmask mapping::
 
     D0  -> bit0 (LSB)
     D1  -> bit1
     D2  -> bit2
-    REF -> bit3
-    SEQ -> bit4
+    D3  -> bit3
+    REF -> bit4
     PAR -> bit5 (MSB)
 
 Usage::
@@ -40,17 +40,17 @@ import os
 import sys
 import time
 
-LED_NAMES_6 = ["D0", "D1", "D2", "REF", "SEQ", "PAR"]
+LED_NAMES_6 = ["D0", "D1", "D2", "D3", "REF", "PAR"]
 
 # Bit position for each LED.
-LED_BIT_MAP = {"D0": 0, "D1": 1, "D2": 2, "REF": 3, "SEQ": 4, "PAR": 5}
+LED_BIT_MAP = {"D0": 0, "D1": 1, "D2": 2, "D3": 3, "REF": 4, "PAR": 5}
 
 # Extra columns for CSV logging — must match what we write in log_extra.
 # Header: pattern, bitmask, D0..PAR (bits), D0_mean..PAR_mean (brightness).
 _SIXLED_CSV_EXTRA_COLUMNS = [
     "pattern", "bitmask",
-    "D0", "D1", "D2", "REF", "SEQ", "PAR",
-    "D0_mean", "D1_mean", "D2_mean", "REF_mean", "SEQ_mean", "PAR_mean",
+    "D0", "D1", "D2", "D3", "REF", "PAR",
+    "D0_mean", "D1_mean", "D2_mean", "D3_mean", "REF_mean", "PAR_mean",
     "roi_mode", "tag_seen", "tag_id", "tag_center_x", "tag_center_y",
     "tag_decision_margin", "tag_hamming", "dynamic_roi_valid", "invalid_reason",
 ]
@@ -78,7 +78,7 @@ def _load_roi_file(path: str) -> list[tuple[int, int]]:
     Expected format::
 
         {
-            "led_order": ["D0","D1","D2","REF","SEQ","PAR"],
+            "led_order": ["D0","D1","D2","D3","REF","PAR"],
             "points": {"D0":[x,y], "D1":[x,y], ...}
         }
     """
@@ -122,7 +122,7 @@ def _save_roi_file(path: str, points: list[tuple[int, int]], **extra) -> None:
 class LedSelector6:
     """Collect up to 6 LED ROI positions via mouse clicks.
 
-    Click order: D0 → D1 → D2 → REF → SEQ → PAR.
+    Click order: D0 → D1 → D2 → D3 → REF → PAR.
     """
 
     def __init__(self) -> None:
@@ -193,6 +193,10 @@ def main() -> None:
         help="Show protocol-level decoded beacon (msg_id/seq/valid)",
     )
     parser.add_argument(
+        "--protocol-mode", choices=["four-light", "legacy"], default="four-light",
+        help="Protocol bridge used by --protocol (default: four-light)",
+    )
+    parser.add_argument(
         "--roi-mode", choices=["fixed", "apriltag"], default="fixed",
         help="ROI source; fixed preserves the existing click/ROI-file path",
     )
@@ -235,7 +239,16 @@ def main() -> None:
         sys.exit(1)
 
     if args.protocol:
-        from robocon_coop_comm.six_led_decoder import six_led_to_decoded_beacon
+        from robocon_coop_comm.six_led_decoder import (
+            six_led_to_coop_beacon,
+            six_led_to_decoded_beacon,
+        )
+
+        protocol_decoder = (
+            six_led_to_coop_beacon
+            if args.protocol_mode == "four-light"
+            else six_led_to_decoded_beacon
+        )
 
     # --- load ROI from file (skip clicking) ---
     preloaded_points: list[tuple[int, int]] | None = None
@@ -370,7 +383,7 @@ def main() -> None:
         if preloaded_points is not None:
             print("ROI preloaded.  Keys: q=quit, r=re-click, +=threshold up, -=threshold down")
         else:
-            print("Click in order:  D0  D1  D2  REF  SEQ  PAR")
+            print("Click in order:  D0  D1  D2  D3  REF  PAR")
             print("Keys: q=quit, r=reset, s=save ROI, +=threshold up, -=threshold down")
 
         while True:
@@ -456,7 +469,7 @@ def main() -> None:
                         cv2.line(display, start, end, (255, 255, 0), 2)
 
                 if args.protocol:
-                    proto = six_led_to_decoded_beacon(reading, source="6led_live")
+                    proto = protocol_decoder(reading, source="6led_live")
                     status_lines.append(
                         f"msg_id={proto.msg_id} {proto.msg_name}  "
                         f"seq={proto.seq}  valid={proto.valid}"
@@ -479,7 +492,7 @@ def main() -> None:
                     f"conf={reading.confidence:.2f} valid={reading.valid}"
                 )
                 if args.protocol:
-                    proto = six_led_to_decoded_beacon(reading, source="6led_live")
+                    proto = protocol_decoder(reading, source="6led_live")
                     line += f" msg_id={proto.msg_id} {proto.msg_name} seq={proto.seq}"
                 print(line, end="\r")
 
@@ -529,7 +542,7 @@ def main() -> None:
                 break
             if key == ord("r"):
                 selector.points.clear()
-                print("\nReset LED points — click again: D0 D1 D2 REF SEQ PAR")
+                print("\nReset LED points — click again: D0 D1 D2 D3 REF PAR")
             elif key == ord("s"):
                 if selector.ready:
                     save_path = args.save_roi or "sixled_roi.json"

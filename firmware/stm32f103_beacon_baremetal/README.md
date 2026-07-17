@@ -5,15 +5,15 @@
 这是 R1 LED 光码板的 MCU 固件，运行在 **STM32F103C8T6 (Blue Pill)** 上。
 
 - **当前版本**：裸寄存器 C（无 HAL、无 CubeMX、无 Arduino）
-- **当前状态**：✅ 三灯 D0/D1/D2 已实机验证通过
-- **六灯模式**（REF/SEQ/PAR）：代码已预留，下一阶段启用
+- **已验证历史模式**：三灯 D0/D1/D2
+- **当前生产方案**：D0/D1/D2/D3 + REF + PAR，等待实机验收
 
 ## 功能
 
 1. 通过 USART1 (PA9/PA10) 接收 R1 主控发来的 6 字节串口帧
-2. 校验帧格式和 checksum
-3. 驱动 3 颗 LED 显示 msg_id 的低 3 位
-4. 回复 3 字节 ACK 确认帧
+2. 同时保留旧 `AA 55` 帧并支持 `BD 02` V2帧
+3. V2使用CRC-8、六灯偶校验和300 ms看门狗
+4. 回复版本化ACK，供R1判断Beacon链路是否在线
 
 ## 硬件要求
 
@@ -21,7 +21,7 @@
 |------|------|
 | STM32F103C8T6 (Blue Pill) | MCU 开发板 |
 | ST-LINK/V2.1（或兼容烧录器） | 烧录 + USB 虚拟串口 |
-| 3× LED + 3× 限流电阻 (~220Ω) | D0/D1/D2 指示灯 |
+| 6路24V驱动板 | D0/D1/D2/D3/REF/PAR，GPIO不得直接带24V灯 |
 
 ## 烧录方式
 
@@ -79,9 +79,9 @@ openocd -f interface/stlink.cfg -f target/stm32f1x.cfg \
 | PA0 | → 电阻 (~220Ω) → **D0** LED 长脚 (Anode)，短脚 (Cathode) → GND |
 | PA1 | → 电阻 (~220Ω) → **D1** LED 长脚，短脚 → GND |
 | PA2 | → 电阻 (~220Ω) → **D2** LED 长脚，短脚 → GND |
-| PA3 | **REF** — 预留，下一阶段 |
-| PA4 | **SEQ** — 预留，下一阶段 |
-| PA5 | **PAR** — 预留，下一阶段 |
+| PA3 | **D3**，状态bit3 |
+| PA4 | **REF**，合法V2帧常亮 |
+| PA5 | **PAR**，D0～D3偶校验 |
 
 ## 测试命令
 
@@ -90,7 +90,11 @@ openocd -f interface/stlink.cfg -f target/stm32f1x.cfg \
 ```bash
 source .venv/bin/activate
 
-# 发送 INSERT_ALLOWED (msg_id=4)，亮度 200
+# V2推荐测试
+python tools/send_beacon_uart_v2.py \
+  --port /dev/ttyACM0 --state INSERT_ALLOWED --count 20
+
+# 历史兼容帧测试
 python tools/send_3led_msg.py --port /dev/ttyACM0 --msg-id 4 --seq 1 --brightness 200
 ```
 

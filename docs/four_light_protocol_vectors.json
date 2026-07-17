@@ -1,0 +1,18 @@
+[
+  {"state_id": 0, "name": "IDLE", "mask": 16},
+  {"state_id": 1, "name": "HOLD", "mask": 49},
+  {"state_id": 2, "name": "R1_ROD_CLAMPED", "mask": 50},
+  {"state_id": 3, "name": "R1_AT_ASSEMBLY_POSE", "mask": 19},
+  {"state_id": 4, "name": "INSERT_ALLOWED", "mask": 52},
+  {"state_id": 5, "name": "WEAPON_LOCKED", "mask": 21},
+  {"state_id": 6, "name": "R1_CLEAR_MC", "mask": 22},
+  {"state_id": 7, "name": "R1_IN_MF", "mask": 55},
+  {"state_id": 8, "name": "ABORT_CURRENT_TASK", "mask": 56},
+  {"state_id": 9, "name": "RETRY_RESET", "mask": 25},
+  {"state_id": 10, "name": "R1_ATTACK_READY", "mask": 26},
+  {"state_id": 11, "name": "R1_WAIT_R2", "mask": 59},
+  {"state_id": 12, "name": "LIFT_DOCK_READY", "mask": 28},
+  {"state_id": 13, "name": "TOP_RELEASE_ALLOWED", "mask": 61},
+  {"state_id": 14, "name": "ERROR", "mask": 62},
+  {"state_id": 15, "name": "PROTOCOL_TEST", "mask": 31}
+]

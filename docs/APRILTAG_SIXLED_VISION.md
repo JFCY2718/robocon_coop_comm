@@ -17,7 +17,7 @@ The original fixed ROI mode remains the default:
 The LED order remains exactly:
 
 ```text
-D0, D1, D2, REF, SEQ, PAR
+D0, D1, D2, D3, REF, PAR
 bit0                 bit5
 ```
 
@@ -31,7 +31,7 @@ bit0                 bit5
 - Tag centre on board: `(-95, 0)` mm.
 - LED centres on board:
   - D0 `(45, 45)`, D1 `(105, 45)`, D2 `(165, 45)` mm.
-  - REF `(45, -45)`, SEQ `(105, -45)`, PAR `(165, -45)` mm.
+  - D3 `(45, -45)`, REF `(105, -45)`, PAR `(165, -45)` mm.
 - Lamp-cap radius: 14.75 mm; default sample radius is 65 percent of it.
 
 The built-in model is in `beacon_geometry.py`. A JSON file passed through
@@ -49,7 +49,8 @@ Hikrobot or offline frame
   -> six projected centres and scale-dependent circular radii
   -> explicit bounds validation
   -> existing SixLedRoiDecoder threshold/confidence logic
-  -> bitmask and structured validity metadata
+  -> REF and even-parity validation
+  -> state_id 0..15 and structured validity metadata
 ```
 
 The last projected ROIs may remain visible for at most `--tag-lost-frames` to

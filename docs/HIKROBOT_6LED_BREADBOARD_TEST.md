@@ -23,8 +23,8 @@
 D0  -> PA0 / bit0 / 0x01
 D1  -> PA1 / bit1 / 0x02
 D2  -> PA2 / bit2 / 0x04
-REF -> PA3 / bit3 / 0x08
-SEQ -> PA4 / bit4 / 0x10
+D3  -> PA3 / bit3 / 0x08
+REF -> PA4 / bit4 / 0x10
 PAR -> PA5 / bit5 / 0x20
 ```
 
@@ -39,8 +39,8 @@ PAR -> PA5 / bit5 / 0x20
 | 1 | D0 | `0x01` | `000001` |
 | 2 | D1 | `0x02` | `000010` |
 | 4 | D2 | `0x04` | `000100` |
-| 8 | REF | `0x08` | `001000` |
-| 16 | SEQ | `0x10` | `010000` |
+| 8 | D3 | `0x08` | `001000` |
+| 16 | REF | `0x10` | `010000` |
 | 32 | PAR | `0x20` | `100000` |
 
 ---
@@ -102,7 +102,7 @@ python tools/hikrobot_6led_live.py \
 
 | 操作 | 按键 |
 |------|------|
-| 按顺序点击 LED 中心 | 鼠标左键 (D0 → D1 → D2 → REF → SEQ → PAR) |
+| 按顺序点击 LED 中心 | 鼠标左键 (D0 → D1 → D2 → D3 → REF → PAR) |
 | 保存 ROI | `s` |
 | 重置选点 | `r` |
 | 提高 threshold | `+` / `=` |
@@ -340,7 +340,7 @@ sudo dmesg -w
 | 9 | D1 → 0x02 | ⬜ |
 | 10 | D2 → 0x04 | ⬜ |
 | 11 | REF → 0x08 | ⬜ |
-| 12 | SEQ → 0x10 | ⬜ |
+| 12 | REF → 0x10 | ⬜ |
 | 13 | PAR → 0x20 | ⬜ |
 | 14 | sixled_log_summary.py summarizes logs | ⬜ |
 

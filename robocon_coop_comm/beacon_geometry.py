@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 
-LED_ORDER = ("D0", "D1", "D2", "REF", "SEQ", "PAR")
+LED_ORDER = ("D0", "D1", "D2", "D3", "REF", "PAR")
 
 
 @dataclass(frozen=True)
@@ -26,8 +26,8 @@ class BeaconGeometry:
         ("D0", 45.0, 45.0),
         ("D1", 105.0, 45.0),
         ("D2", 165.0, 45.0),
-        ("REF", 45.0, -45.0),
-        ("SEQ", 105.0, -45.0),
+        ("D3", 45.0, -45.0),
+        ("REF", 105.0, -45.0),
         ("PAR", 165.0, -45.0),
     )
     led_cap_radius_mm: float = 14.75

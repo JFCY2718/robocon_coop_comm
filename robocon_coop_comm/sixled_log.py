@@ -9,10 +9,10 @@ from __future__ import annotations
 import csv
 from collections import Counter
 
-LED_NAMES = ["D0", "D1", "D2", "REF", "SEQ", "PAR"]
+LED_NAMES = ["D0", "D1", "D2", "D3", "REF", "PAR"]
 
 # Bit position for each LED: D0=bit0 … PAR=bit5.
-LED_BIT_MAP = {"D0": 0, "D1": 1, "D2": 2, "REF": 3, "SEQ": 4, "PAR": 5}
+LED_BIT_MAP = {"D0": 0, "D1": 1, "D2": 2, "D3": 3, "REF": 4, "PAR": 5}
 
 # Fields expected in a well-formed new-style CSV.
 _NEW_STYLE_BITMASK_KEYS = ("bitmask", "bitmask_hex")
@@ -70,6 +70,8 @@ def normalise_row(row: dict) -> dict:
     if n >= 2:
         normalised.setdefault("bitmask", extra[1])
     # LED bits: positions 2..7
+    # Headerless overflow rows are mapped by physical bit position. This keeps
+    # old logs readable even though bit3/bit4 now mean D3/REF in V2.
     for i, name in enumerate(LED_NAMES):
         if n > 2 + i:
             normalised.setdefault(name, extra[2 + i])

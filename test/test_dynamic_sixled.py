@@ -43,8 +43,8 @@ def test_default_geometry_and_fixed_bit_order() -> None:
         ("D0", 140.0, 45.0),
         ("D1", 200.0, 45.0),
         ("D2", 260.0, 45.0),
-        ("REF", 140.0, -45.0),
-        ("SEQ", 200.0, -45.0),
+        ("D3", 140.0, -45.0),
+        ("REF", 200.0, -45.0),
         ("PAR", 260.0, -45.0),
     )
     assert tuple(name for name, _, _ in geometry.led_centers_mm) == LED_ORDER
@@ -64,7 +64,7 @@ def test_known_homography_projects_all_six_leds() -> None:
     assert result.valid is True
     assert [(r.name, r.x_px, r.y_px) for r in result.rois] == [
         ("D0", 440, 355), ("D1", 500, 355), ("D2", 560, 355),
-        ("REF", 440, 445), ("SEQ", 500, 445), ("PAR", 560, 445),
+        ("D3", 440, 445), ("REF", 500, 445), ("PAR", 560, 445),
     ]
 
 
@@ -119,7 +119,7 @@ def test_tracker_decodes_circular_rois_in_six_led_order() -> None:
     frame = _frame()
     rois = tracker.projector.project(TAG_CORNERS, frame.image.shape[:2]).rois
     for roi in rois:
-        if roi.name in {"D0", "REF", "PAR"}:
+        if roi.name in {"D0", "D3", "PAR"}:
             cv2.circle(frame.image, (roi.x_px, roi.y_px), roi.radius_px, 220, -1)
     result = tracker.process(frame)
     assert result.valid

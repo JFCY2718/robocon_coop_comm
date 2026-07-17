@@ -23,8 +23,8 @@ Do not change this order unless explicitly requested:
 | D0 | bit0 | 0x01 |
 | D1 | bit1 | 0x02 |
 | D2 | bit2 | 0x04 |
-| REF | bit3 | 0x08 |
-| SEQ | bit4 | 0x10 |
+| D3 | bit3 | 0x08 |
+| REF | bit4 | 0x10 |
 | PAR | bit5 | 0x20 |
 
 Current code formats six-led `pattern` strings in LED order, D0 first and PAR
@@ -36,8 +36,8 @@ last:
 1   -> 0x01 -> 100000 -> D0
 2   -> 0x02 -> 010000 -> D1
 4   -> 0x04 -> 001000 -> D2
-8   -> 0x08 -> 000100 -> REF
-16  -> 0x10 -> 000010 -> SEQ
+8   -> 0x08 -> 000100 -> D3
+16  -> 0x10 -> 000010 -> REF
 32  -> 0x20 -> 000001 -> PAR
 ```
 
@@ -90,6 +90,7 @@ tools/hikrobot_6led_live.py
 tools/sixled_log_summary.py
 tools/sixled_serial_sequence.py
 tools/sixled_expected_observed_check.py
+tools/send_beacon_uart_v2.py
 ```
 
 ## Common tests

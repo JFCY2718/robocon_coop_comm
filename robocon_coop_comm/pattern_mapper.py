@@ -89,13 +89,13 @@ PATTERN_3LED_BELOW = LedPattern(
 
 PATTERN_6LED_HORIZONTAL = LedPattern(
     name="6led_horizontal",
-    description="6 LEDs (REF/D0/D1/D2/SEQ/PAR) in a single horizontal row",
+    description="6 LEDs (D0/D1/D2/D3/REF/PAR) in a single horizontal row",
     leds=[
-        LedDef("REF", 0.0, 110.0),
-        LedDef("D0", 20.0, 110.0),
-        LedDef("D1", 40.0, 110.0),
-        LedDef("D2", 60.0, 110.0),
-        LedDef("SEQ", 80.0, 110.0),
+        LedDef("D0", 0.0, 110.0),
+        LedDef("D1", 20.0, 110.0),
+        LedDef("D2", 40.0, 110.0),
+        LedDef("D3", 60.0, 110.0),
+        LedDef("REF", 80.0, 110.0),
         LedDef("PAR", 100.0, 110.0),
     ],
 )
@@ -103,17 +103,17 @@ PATTERN_6LED_HORIZONTAL = LedPattern(
 
 PATTERN_6LED_TWO_ROW = LedPattern(
     name="6led_two_row",
-    description="6 LEDs in two rows: REF/D0/D1 on top, D2/SEQ/PAR on bottom",
+    description="6 LEDs in two rows: D0/D1/D2 on top, D3/REF/PAR on bottom",
     leds=[
-        LedDef("REF", 0.0, 0.0),
-        LedDef("D0", 20.0, 0.0),
-        LedDef("D1", 40.0, 0.0),
-        LedDef("D2", 0.0, 30.0),
-        LedDef("SEQ", 20.0, 30.0),
+        LedDef("D0", 0.0, 0.0),
+        LedDef("D1", 20.0, 0.0),
+        LedDef("D2", 40.0, 0.0),
+        LedDef("D3", 0.0, 30.0),
+        LedDef("REF", 20.0, 30.0),
         LedDef("PAR", 40.0, 30.0),
     ],
 )
-"""6-LED two-row layout.  Top: REF/D0/D1, Bottom: D2/SEQ/PAR."""
+"""6-LED two-row layout. Top: D0/D1/D2, Bottom: D3/REF/PAR."""
 
 # ---------------------------------------------------------------------------
 # PatternMapper

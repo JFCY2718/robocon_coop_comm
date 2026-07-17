@@ -128,7 +128,7 @@ python tools/r1_beacon_control.py --port /dev/ttyACM0 --command insert
 | STM32F103C8T6 (Blue Pill) | LED 光码 MCU，接收 USART1 串口帧 |
 | ST-LINK/V2.1 | 烧录器 + USB 虚拟串口 (VCP)，系统枚举为 `/dev/ttyACM0` |
 | 3× 高亮 LED + 限流电阻 | D0/D1/D2 **三灯信标（✅ 已实机验证）** |
-| 3× LED（REF/SEQ/PAR） | **六灯模式下一阶段扩展**（引脚 PA3/PA4/PA5 已预留） |
+| 3× LED（D3/REF/PAR） | **四数据灯 V2 扩展**（引脚 PA3/PA4/PA5） |
 | Hikrobot 相机 | 三灯识别 ✅ 已工程化（`HikrobotFrameProvider` + `ThreeLedRoiDecoder`） |
 
 ### 引脚接线
@@ -140,9 +140,9 @@ python tools/r1_beacon_control.py --port /dev/ttyACM0 --command insert
 | PA0 | → 电阻 → D0 LED 长脚，短脚 → GND |
 | PA1 | → 电阻 → D1 LED 长脚，短脚 → GND |
 | PA2 | → 电阻 → D2 LED 长脚，短脚 → GND |
-| PA3 | REF，预留 |
-| PA4 | SEQ，预留 |
-| PA5 | PAR，预留 |
+| PA3 | D3，状态 bit3 |
+| PA4 | REF，有效帧标志 |
+| PA5 | PAR，D0～D3 偶校验 |
 
 **串口（ST-LINK ↔ STM32）：**
 
