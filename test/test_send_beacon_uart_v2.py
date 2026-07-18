@@ -1,13 +1,23 @@
 from __future__ import annotations
 
 import csv
+import importlib.util
 import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+from robocon_coop_comm.beacon_uart_v2 import AckStatus, build_ack
+
 
 SCRIPT = Path(__file__).parents[1] / "tools" / "send_beacon_uart_v2.py"
 EXPECTED_FIELDS = ["start_ts", "end_ts", "value", "state_name", "bitmask", "label"]
+
+_SPEC = importlib.util.spec_from_file_location("send_beacon_uart_v2", SCRIPT)
+assert _SPEC is not None and _SPEC.loader is not None
+_SENDER = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(_SENDER)
 
 
 # ---------------------------------------------------------------------------
@@ -362,3 +372,25 @@ def test_counter_wraps_at_256() -> None:
     )
     # Counter starts at 0 in single-state mode; sequence mode also starts at 0
     assert "bd 02 00 00 c8 " in result.stdout
+
+
+def test_matching_ack_is_accepted() -> None:
+    raw = build_ack(4, 23, AckStatus.OK)
+    ack = _SENDER._validate_ack(raw, 4, 23)
+    assert (ack.state_id, ack.counter, ack.status) == (4, 23, AckStatus.OK)
+
+
+@pytest.mark.parametrize(
+    ("raw", "state", "counter", "message"),
+    [
+        (build_ack(4, 23, AckStatus.BAD_CRC), 4, 23, "status=BAD_CRC"),
+        (build_ack(5, 23, AckStatus.OK), 4, 23, "state_mismatch"),
+        (build_ack(4, 24, AckStatus.OK), 4, 23, "counter_mismatch"),
+        (b"", 4, 23, "bad_length"),
+    ],
+)
+def test_ack_errors_are_rejected(
+    raw: bytes, state: int, counter: int, message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        _SENDER._validate_ack(raw, state, counter)

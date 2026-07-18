@@ -111,6 +111,22 @@ def write_expected_csv(path: str, expected: list[dict]) -> None:
             writer.writerow(rec)
 
 
+def _validate_ack(raw: bytes, expected_state: int, expected_counter: int):
+    """Parse an ACK and require it to match the command just transmitted."""
+    ack = parse_ack(raw)
+    if ack.status != AckStatus.OK:
+        raise ValueError(f"status={ack.status.name}")
+    if ack.state_id != expected_state:
+        raise ValueError(
+            f"state_mismatch expected={expected_state} actual={ack.state_id}"
+        )
+    if ack.counter != expected_counter:
+        raise ValueError(
+            f"counter_mismatch expected={expected_counter} actual={ack.counter}"
+        )
+    return ack
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -276,7 +292,7 @@ def main() -> None:
                 port.write(frame)
                 ack_raw = port.read(6)
                 try:
-                    ack = parse_ack(ack_raw)
+                    ack = _validate_ack(ack_raw, state_id, counter)
                 except ValueError as exc:
                     raise SystemExit(
                         f"invalid ACK {ack_raw.hex(' ')}: {exc}"
@@ -316,22 +332,11 @@ def main() -> None:
                     port.write(frame)
                     ack_raw = port.read(6)
                     try:
-                        ack = parse_ack(ack_raw)
+                        ack = _validate_ack(ack_raw, state_id, counter)
                     except ValueError as exc:
-                        print(
-                            f"WARNING: invalid ACK {ack_raw.hex(' ')}: {exc}",
-                            file=sys.stderr,
-                        )
-                    else:
-                        status_label = ack.status.name
-                        if ack.status != AckStatus.OK:
-                            print(
-                                f"WARNING: [{state_idx + 1}/{len(state_list)}] "
-                                f"state={state.name} mask={hex_str} "
-                                f"refresh={refresh_idx + 1}/{refreshes} "
-                                f"counter={counter} status={status_label}",
-                                file=sys.stderr,
-                            )
+                        raise SystemExit(
+                            f"invalid ACK {ack_raw.hex(' ')}: {exc}"
+                        ) from exc
 
                     counter = (counter + 1) & 0xFF
 
