@@ -293,7 +293,7 @@ class TestOldBrokenCsv:
     def test_old_csv_summary_all_on(self) -> None:
         """Old broken CSV with all-on frames → LED ON ratio ~100%."""
         content = _old_broken_csv_content(20)  # 10 all-on, 10 all-off
-        import io, tempfile
+        import tempfile
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".csv", delete=False, newline=""
         ) as tmp:

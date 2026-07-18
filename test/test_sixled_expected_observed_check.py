@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import csv
-import io
 import json
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
-import pytest
 
 from tools.sixled_expected_observed_check import check as _check
 from robocon_coop_comm.sixled_log import LED_NAMES

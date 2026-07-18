@@ -1,13 +1,21 @@
 from __future__ import annotations
 
 import csv
+import re
 import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+from robocon_coop_comm.beacon_uart_v2 import AckStatus, build_ack
+from tools.send_beacon_uart_v2 import validate_ack
+
 
 SCRIPT = Path(__file__).parents[1] / "tools" / "send_beacon_uart_v2.py"
-EXPECTED_FIELDS = ["start_ts", "end_ts", "value", "state_name", "bitmask", "label"]
+EXPECTED_FIELDS = [
+    "start_ts", "end_ts", "state_id", "value", "state_name", "bitmask", "label",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -175,7 +183,8 @@ def test_all_16_state_masks() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_expected_csv_dry_run_output() -> None:
+def test_expected_csv_dry_run_output(tmp_path: Path) -> None:
+    expected_path = tmp_path / "expected.csv"
     result = subprocess.run(
         [
             sys.executable, str(SCRIPT),
@@ -183,7 +192,7 @@ def test_expected_csv_dry_run_output() -> None:
             "--states", "0,1,2,3",
             "--hold-sec", "3",
             "--refresh-sec", "0.05",
-            "--expected-log", "/tmp/test_send_beacon_v2_expected.csv",
+            "--expected-log", str(expected_path),
         ],
         capture_output=True,
         text=True,
@@ -192,7 +201,7 @@ def test_expected_csv_dry_run_output() -> None:
     assert result.returncode == 0, result.stderr
 
     # Read back the CSV
-    with open("/tmp/test_send_beacon_v2_expected.csv", "r") as fh:
+    with expected_path.open("r", newline="") as fh:
         reader = csv.DictReader(fh)
         rows = list(reader)
 
@@ -202,6 +211,7 @@ def test_expected_csv_dry_run_output() -> None:
             assert field in row, f"missing field {field}"
 
     assert rows[0]["state_name"] == "IDLE"
+    assert rows[0]["state_id"] == "0"
     assert rows[0]["value"] == "0"
     assert rows[0]["bitmask"] == "0x10"
     assert rows[0]["label"] == "IDLE"
@@ -220,8 +230,6 @@ def test_expected_csv_bitmask_format() -> None:
     """Every bitmask in the expected CSV uses the 0xNN format."""
     from robocon_coop_comm.coop_protocol_v2 import encode_message
     from robocon_coop_comm.sixled_log import bitmask_to_hex_str
-    import re
-
     for state_id in range(16):
         mask = encode_message(state_id)
         hex_str = bitmask_to_hex_str(mask)
@@ -248,6 +256,7 @@ def test_expected_csv_compatible_with_checker() -> None:
         exp_rows.append({
             "start_ts": f"{start:.6f}",
             "end_ts": f"{end:.6f}",
+            "state_id": str(state_id),
             "value": str(state_id),
             "state_name": f"S{state_id}",
             "bitmask": hex_str,
@@ -362,3 +371,34 @@ def test_counter_wraps_at_256() -> None:
     )
     # Counter starts at 0 in single-state mode; sequence mode also starts at 0
     assert "bd 02 00 00 c8 " in result.stdout
+
+
+def test_validate_ack_accepts_exact_ok_echo() -> None:
+    ack = validate_ack(build_ack(4, 255, AckStatus.OK), 4, 255)
+    assert ack.state_id == 4
+    assert ack.counter == 255
+
+
+@pytest.mark.parametrize(
+    ("frame", "state", "counter", "error"),
+    [
+        (build_ack(4, 7, AckStatus.BAD_CRC), 4, 7, "ack_status_bad_crc"),
+        (build_ack(5, 7, AckStatus.OK), 4, 7, "ack_state_mismatch"),
+        (build_ack(4, 8, AckStatus.OK), 4, 7, "ack_counter_mismatch"),
+    ],
+)
+def test_validate_ack_rejects_nonmatching_echo(
+    frame: bytes,
+    state: int,
+    counter: int,
+    error: str,
+) -> None:
+    with pytest.raises(ValueError, match=error):
+        validate_ack(frame, state, counter)
+
+
+def test_validate_ack_rejects_corrupt_crc() -> None:
+    frame = bytearray(build_ack(4, 7, AckStatus.OK))
+    frame[-1] ^= 0x01
+    with pytest.raises(ValueError, match="bad_crc"):
+        validate_ack(bytes(frame), 4, 7)

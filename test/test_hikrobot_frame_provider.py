@@ -389,7 +389,8 @@ class TestFrameLogger:
                 f"header has {len(header_cols)} cols, data has {len(data_cols)} cols"
             )
             # Verify no row[None] would be produced by csv.DictReader
-            import csv, io
+            import csv
+            import io
             reader = csv.DictReader(io.StringIO(content))
             row = next(reader)
             assert None not in row, f"row[None] detected: {row.get(None)}"

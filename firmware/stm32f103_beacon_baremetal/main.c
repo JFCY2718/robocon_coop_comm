@@ -521,8 +521,10 @@ int main(void)
 
 /*
  * Linker-defined symbols from stm32f103c8.ld.
- * _sbss / _ebss delimit the .bss section in SRAM — must be zeroed on reset.
  */
+extern uint32_t _sidata;
+extern uint32_t _sdata;
+extern uint32_t _edata;
 extern uint32_t _sbss;
 extern uint32_t _ebss;
 
@@ -558,17 +560,16 @@ const uint32_t vector_table[] = {
 
 /*
  * Reset_Handler is the hardware entry point called after reset.
- * It must zero .bss before handing control to main(), otherwise
- * uninitialised static variables (system_ms, watchdog, etc.) can
- * contain random SRAM garbage and cause undefined behaviour on real
- * hardware.
- *
- * The .data section is empty in this firmware so a copy loop from
- * flash is not needed — if any initialised globals are added later,
- * a flash-to-SRAM copy must be inserted here.
+ * It copies .data and zeros .bss before handing control to main().
  */
 void Reset_Handler(void)
 {
+    const uint32_t *source = &_sidata;
+    uint32_t *data = &_sdata;
+    while (data < &_edata) {
+        *data++ = *source++;
+    }
+
     uint32_t *bss = &_sbss;
     while (bss < &_ebss) {
         *bss++ = 0U;

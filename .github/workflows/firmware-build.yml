@@ -1,0 +1,35 @@
+name: firmware-build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  stm32f103-beacon:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ARM toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi
+      - name: Build outside repository
+        run: |
+          set -euo pipefail
+          source_dir="$GITHUB_WORKSPACE/firmware/stm32f103_beacon_baremetal"
+          output_dir="$RUNNER_TEMP/stm32f103-beacon"
+          mkdir -p "$output_dir"
+          arm-none-eabi-gcc \
+            -mcpu=cortex-m3 -mthumb -Os -ffreestanding \
+            -fdata-sections -ffunction-sections -nostdlib -nostartfiles \
+            -Wall -Wextra \
+            -Wl,--gc-sections \
+            -Wl,-T,"$source_dir/stm32f103c8.ld" \
+            -Wl,-Map,"$output_dir/beacon.map" \
+            "$source_dir/main.c" \
+            -o "$output_dir/beacon.elf"
+          arm-none-eabi-objcopy -O ihex \
+            "$output_dir/beacon.elf" "$output_dir/beacon.hex"
+          arm-none-eabi-size "$output_dir/beacon.elf"
+          test ! -e "$GITHUB_WORKSPACE/firmware/stm32f103_beacon_baremetal/beacon.elf"
+          test ! -e "$GITHUB_WORKSPACE/firmware/stm32f103_beacon_baremetal/beacon.hex"

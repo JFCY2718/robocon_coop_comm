@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import json
 
-import numpy as np
 import pytest
 
 from robocon_coop_comm.pattern_mapper import (
@@ -24,7 +23,6 @@ from robocon_coop_comm.pattern_mapper import (
     LedPattern,
     PatternMapper,
 )
-from robocon_coop_comm.apriltag_roi_mapper import RoiPoint
 
 
 # ---------------------------------------------------------------------------

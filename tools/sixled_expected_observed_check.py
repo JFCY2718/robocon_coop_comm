@@ -25,10 +25,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from robocon_coop_comm.sixled_log import (
+from robocon_coop_comm.sixled_log import (  # noqa: E402
     dominant_bitmask,
     normalise_row,
-    parse_bitmask_str,
     read_csv,
 )
 

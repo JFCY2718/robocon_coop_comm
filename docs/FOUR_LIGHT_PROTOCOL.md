@@ -34,6 +34,10 @@ R1 sends every 50 ms. Beacon turns every light off after 300 ms without a
 valid V2 command. R1 treats the link as offline after 300 ms without a matching
 OK ACK.
 
+An ACK matches only when its CRC is valid, status is OK, and both `state_id`
+and `counter` echo the command. The PC validation sender applies the same rule
+and terminates a sequence on the first mismatch.
+
 The legacy `AA 55` STM32 frame, the Rscontrol2 host `0xBC` frame, and the old
 Rscontrol2 `0xAA/0xBB/0xAB` frames remain unchanged.
 

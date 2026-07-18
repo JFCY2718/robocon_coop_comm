@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import io
 import sys
-from unittest.mock import patch
 
 import pytest
 
@@ -20,7 +19,7 @@ _sys = sys
 _tools_dir = _os.path.join(_os.path.dirname(__file__), "..", "tools")
 _sys.path.insert(0, _tools_dir)
 
-import r1_beacon_control as _r1b  # type: ignore[import-not-found]
+import r1_beacon_control as _r1b  # type: ignore[import-not-found]  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -249,18 +248,14 @@ class TestEdgeCases:
         with pytest.raises(SystemExit):
             _r1b.one_shot(ctrl, "nonexistent")
 
-    def test_invalid_brightness_rejected(self) -> None:
+    def test_invalid_brightness_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["r1_beacon_control.py", "--dry-run", "--brightness", "256", "--command", "idle"],
+        )
         with pytest.raises(SystemExit):
-            args = argparse.Namespace(
-                port="/dev/ttyACM0",
-                baudrate=115200,
-                brightness=256,
-                dry_run=True,
-                command=None,
-            )
-            # This is tested via the argparse layer indirectly; the controller
-            # does not validate brightness. We test the main() guard instead.
-            _r1b.main()  # This would parse sys.argv, so we test via unit approach
+            _r1b.main()
 
     def test_brightness_default_is_200(self) -> None:
         ctrl = _r1b.R1BeaconController(dry_run=True)
@@ -269,7 +264,3 @@ class TestEdgeCases:
     def test_frame_hex_formatting(self) -> None:
         frame = bytes([0xAA, 0x55, 0x04, 0x01, 0xC8, 0xCD])
         assert _r1b.frame_hex(frame) == "AA 55 04 01 C8 CD"
-
-
-# argparse import for edge case test
-import argparse
