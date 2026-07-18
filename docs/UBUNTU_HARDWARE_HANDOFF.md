@@ -5,7 +5,8 @@
 ```text
 你现在接手 ROBOCON R1/R2 四灯光通信项目的 Ubuntu 实机阶段。
 
-先完整阅读本文件，然后读取三个仓库各自的项目规则、工程审查清单和任务模板。
+先完整阅读本文件和 docs/R2_VISION_FIELD_WORKFLOW.md，然后读取三个仓库各自的
+项目规则、工程审查清单和任务模板。
 先检查 remote、branch、HEAD、tag、working tree，不要立即改代码。
 
 目标链路：
@@ -28,6 +29,14 @@ R1 受保护状态机 -> F407 专用 UART -> STM32F103 Beacon 板
 关键停止点：在没有确认 F407 空闲 UART 及真实 TX/RX 引脚前，不要修改 CubeMX、
 usart.c 或 main.c，不要复用 USART1 和 USART6。先汇报候选引脚和冲突检查，等待确认。
 ```
+
+## R2 vision operation entry
+
+Use [`R2_VISION_FIELD_WORKFLOW.md`](R2_VISION_FIELD_WORKFLOW.md) for the
+operator procedure, a copy-paste Ubuntu execution task, fixed-ROI baseline,
+AprilTag automatic ROI workflow, acceptance evidence and improvement stages.
+That guide is subordinate to the safety and repository constraints in this
+handoff.
 
 ## Frozen implementation baseline
 
