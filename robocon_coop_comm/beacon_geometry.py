@@ -18,19 +18,19 @@ LED_ORDER = ("D0", "D1", "D2", "D3", "REF", "PAR")
 class BeaconGeometry:
     """Planar beacon geometry in a board-centred, X-right/Y-up frame."""
 
-    board_width_mm: float = 380.0
+    board_width_mm: float = 280.0
     board_height_mm: float = 220.0
     tag_size_mm: float = 150.0
-    tag_center_mm: tuple[float, float] = (-95.0, 0.0)
+    tag_center_mm: tuple[float, float] = (-55.0, 0.0)
     led_centers_mm: tuple[tuple[str, float, float], ...] = (
-        ("D0", 45.0, 45.0),
-        ("D1", 105.0, 45.0),
-        ("D2", 165.0, 45.0),
-        ("D3", 45.0, -45.0),
-        ("REF", 105.0, -45.0),
-        ("PAR", 165.0, -45.0),
+        ("D0", 40.0, 70.0),
+        ("D1", 80.0, 70.0),
+        ("D2", 120.0, 70.0),
+        ("D3", 40.0, 20.0),
+        ("REF", 80.0, 20.0),
+        ("PAR", 120.0, 20.0),
     )
-    led_cap_radius_mm: float = 14.75
+    led_cap_radius_mm: float = 11.2
     roi_radius_scale: float = 0.65
 
     def __post_init__(self) -> None:

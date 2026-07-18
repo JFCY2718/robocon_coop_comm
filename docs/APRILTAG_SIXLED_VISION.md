@@ -23,16 +23,20 @@ bit0                 bit5
 
 ## Physical model
 
-- Board: 380 x 220 x 3 mm, front-view centre is the origin.
+- Board front face: 280 x 220 mm, front-view centre is the origin. The drawing
+  does not specify the board thickness.
 - Board X points right, Y points up, and all centres use Z=0.
 - AprilTag family/ID: `tag36h11`, ID 0.
-- Black tag edge used by detection and pose: 150.0 mm.
-- Printed sheet including the 10 mm white margin: 170 x 170 mm.
-- Tag centre on board: `(-95, 0)` mm.
+- AprilTag detection edge: 150.0 mm. This must be the detected black outer
+  edge; if the physical 150 mm includes a white border, measure and configure
+  the black edge instead.
+- Tag top-left is 10 mm from the board left edge and 35 mm from the top edge.
+- Tag centre on board: `(-55, 0)` mm.
 - LED centres on board:
-  - D0 `(45, 45)`, D1 `(105, 45)`, D2 `(165, 45)` mm.
-  - D3 `(45, -45)`, REF `(105, -45)`, PAR `(165, -45)` mm.
-- Lamp-cap radius: 14.75 mm; default sample radius is 65 percent of it.
+  - D0 `(40, 70)`, D1 `(80, 70)`, D2 `(120, 70)` mm.
+  - D3 `(40, 20)`, REF `(80, 20)`, PAR `(120, 20)` mm.
+- Lamp face diameter: 22.40 mm; default sample radius is 65 percent of its
+  11.20 mm radius, or 7.28 mm.
 
 The built-in model is in `beacon_geometry.py`. A JSON file passed through
 `--beacon-layout` may override measured dimensions. It must preserve the six
@@ -111,10 +115,10 @@ python3 tools/hikrobot_6led_live.py \
 
 ## Field validation
 
-1. Print tag36h11 ID 0 and measure the black outer edge; pass the measured
-   value through `--tag-size` if it is not 150.0 mm.
-2. Mount the 170 x 170 mm sheet flat and matte, with its centre at board
-   coordinate `(-95, 0)` mm.
+1. Print tag36h11 ID 0 and measure the detected black outer edge; pass the
+   measured value through `--tag-size` if it is not 150.0 mm.
+2. Mount the tag flat and matte with its 150 x 150 mm detection square at the
+   drawing position: left/top offsets 10/35 mm and centre `(-55, 0)` mm.
 3. Verify tag-only detection at 1 m, 3 m and the expected maximum distance.
    Record tag edge pixels and decision margin; about 60 pixels at maximum
    distance is the initial target, not an acceptance claim.
