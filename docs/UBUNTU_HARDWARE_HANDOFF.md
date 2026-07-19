@@ -32,11 +32,11 @@ usart.c 或 main.c，不要复用 USART1 和 USART6。先汇报候选引脚和�
 
 ## R2 vision operation entry
 
-Use [`R2_VISION_FIELD_WORKFLOW.md`](R2_VISION_FIELD_WORKFLOW.md) for the
-operator procedure, a copy-paste Ubuntu execution task, fixed-ROI baseline,
-AprilTag automatic ROI workflow, acceptance evidence and improvement stages.
-That guide is subordinate to the safety and repository constraints in this
-handoff.
+Use the bilingual [`R2_VISION_FIELD_WORKFLOW.md`](R2_VISION_FIELD_WORKFLOW.md)
+for the operator procedure, Chinese and English copy-paste Ubuntu tasks,
+fixed-ROI baseline, AprilTag automatic ROI workflow, acceptance evidence and
+improvement stages. That guide is subordinate to the safety and repository
+constraints in this handoff.
 
 ## Frozen implementation baseline
 
