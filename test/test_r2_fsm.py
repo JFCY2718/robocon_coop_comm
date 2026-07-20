@@ -1532,9 +1532,9 @@ class TestStaleBeacon:
         fsm.update(_MockBeacon(), R2Sensors())
         assert fsm.state == R2State.PREPARE_HEAD  # accepted
 
-    def test_default_max_age_is_2_seconds(self) -> None:
+    def test_default_max_age_is_300_ms(self) -> None:
         fsm = R2MissionFSM()
-        assert fsm.max_age_s == 2.0
+        assert fsm.max_age_s == 0.3
 
     def test_custom_max_age(self) -> None:
         fsm = R2MissionFSM(max_age_s=5.0)

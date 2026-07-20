@@ -65,6 +65,21 @@ def test_geometry_json_override_preserves_order() -> None:
     assert tuple(name for name, _, _ in geometry.led_centers_mm) == LED_ORDER
 
 
+def test_competition_geometry_file_loads() -> None:
+    path = (
+        Path(__file__).parent.parent
+        / "data"
+        / "sixled"
+        / "configs"
+        / "competition_beacon_320x240.json"
+    )
+    geometry = BeaconGeometry.from_json(path)
+    assert geometry.board_width_mm == 320.0
+    assert geometry.board_height_mm == 240.0
+    assert geometry.tag_size_mm == 150.0
+    assert tuple(name for name, _, _ in geometry.led_centers_mm) == LED_ORDER
+
+
 def test_known_homography_projects_all_six_leds() -> None:
     result = SixLedHomographyProjector(BeaconGeometry()).project(TAG_CORNERS, (800, 900))
     assert result.valid is True
@@ -160,3 +175,50 @@ def test_pose_request_is_forwarded_only_with_calibration() -> None:
         camera_params=(1000.0, 1000.0, 450.0, 400.0),
         tag_size_m=0.15,
     )
+
+
+def test_optical_flow_tracks_between_full_detections() -> None:
+    detector = mock.MagicMock()
+    detector.detect.return_value = [_tag()]
+    tracker = DynamicSixLedTracker(
+        detector,
+        detection_interval=2,
+        track_between_detections=True,
+    )
+    first = tracker.process(_frame(1))
+    assert first.tag is not None
+
+    points = np.asarray(TAG_CORNERS, dtype=np.float32).reshape(-1, 1, 2)
+    with mock.patch(
+        "cv2.calcOpticalFlowPyrLK",
+        return_value=(points, np.ones((4, 1), dtype=np.uint8), np.zeros((4, 1))),
+    ):
+        second = tracker.process(_frame(2))
+
+    assert detector.detect.call_count == 1
+    assert second.tag is not None and second.tag.extra["tracked"] is True
+    assert second.reading.extra["tag_tracked"] is True
+
+
+def test_failed_optical_flow_falls_back_to_full_detection() -> None:
+    detector = mock.MagicMock()
+    detector.detect.return_value = [_tag()]
+    tracker = DynamicSixLedTracker(
+        detector,
+        detection_interval=2,
+        track_between_detections=True,
+    )
+    tracker.process(_frame(1))
+    points = np.asarray(TAG_CORNERS, dtype=np.float32).reshape(-1, 1, 2)
+    with mock.patch(
+        "cv2.calcOpticalFlowPyrLK",
+        return_value=(points, np.zeros((4, 1), dtype=np.uint8), np.zeros((4, 1))),
+    ):
+        result = tracker.process(_frame(2))
+    assert detector.detect.call_count == 2
+    assert result.tag is not None and not result.tag.extra.get("tracked", False)
+
+
+def test_invalid_detection_interval_is_rejected() -> None:
+    with pytest.raises(ValueError, match="detection_interval"):
+        DynamicSixLedTracker(mock.MagicMock(), detection_interval=0)

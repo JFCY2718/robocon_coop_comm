@@ -14,6 +14,11 @@ The original fixed ROI mode remains the default:
 --roi-mode apriltag   tag-guided dynamic ROI workflow
 ```
 
+For the recommended competition settings, use `--competition`. It enables
+AprilTag auto ROI, percentile/background-ring decoding, threshold hysteresis,
+periodic optical-flow tracking, newest-frame acquisition and temporal protocol
+validation. See `R2_VISION_COMPETITION_UPGRADE.md`.
+
 The LED order remains exactly:
 
 ```text
@@ -136,3 +141,7 @@ lens/distortion choice, camera-to-R2 extrinsics, exposure/gain/threshold,
 decision-margin distribution, ROI radius scale, motion blur results, and
 maximum reliable distance. Unit tests and offline images do not replace these
 measurements.
+
+The legacy built-in board remains 280 x 220 mm for compatibility. New builds
+should pass `data/sixled/configs/competition_beacon_320x240.json` to use the
+recommended 320 x 240 mm carrier without silently changing an existing board.

@@ -226,16 +226,17 @@ Hard constraints:
 10. FSM output is ActionIntent only — never drive motors/hardware directly.
 11. ESTOP > ABORT > HOLD > ERROR > normal mission events.
 
-Current phase (2026-06-22):
+Current phase (2026-07-20):
 
 - **Round FSM-A completed**: R1/R2 Mission FSM safety hardening.
-- **Round 4A**: Hikrobot real camera 6-LED breadboard bitmask smoke/stability test.
-- pytest: 556 passed.
+- **Round 4C software completed**: robust competition six-LED vision pipeline.
+- pytest: 736 passed.
 - STM32 6 LEDs confirmed working (PA0-PA5, D0=bit0 … PAR=bit5).
 - MVS SDK import OK. OpenCV ROI window opens.
 - Breadboard ROI: `data/sixled/configs/breadboard_roi.json` (temporary, not final).
-- Do NOT modify AprilTag, ROS2, or competition semantics during Round 4A.
-- Current goal: verify STM32 6LED on/off → camera → OpenCV ROI → Python bitmask.
+- Current goal: complete real-camera Round 4C validation without connecting
+  dangerous actuators.
+- Software completion is not M3 or real-hardware acceptance.
 
 Recent Round FSM-A additions:
 
@@ -274,6 +275,7 @@ python tools/sixled_log_summary.py data/sixled/logs/round4a_t40_e12000.csv
 
 Key docs:
 
+- `docs/R2_VISION_COMPETITION_UPGRADE.md` — competition preset and hardware checklist
 - `docs/FSM_SAFETY_DESIGN.md` — FSM safety architecture (NEW)
 - `docs/R1_R2_MISSION_FSM.md` — R1/R2 FSM details (NEW)
 - `docs/HANDOFF_TO_NEXT_CC_SESSION.md` — handoff guide (NEW)

@@ -232,10 +232,12 @@ class HikrobotFrameProvider(BeaconFrameProvider):
         exposure_time: float = 10000.0,
         gain: float = 5.0,
         timeout_ms: int = 1000,
+        pixel_format_mono8: bool = True,
     ) -> None:
         self._exposure_time = exposure_time
         self._gain = gain
         self._timeout_ms = timeout_ms
+        self._pixel_format_mono8 = bool(pixel_format_mono8)
         self._cam = None
         self._payload_size: int = 0
         self._frame_id: int = 0
@@ -294,23 +296,36 @@ class HikrobotFrameProvider(BeaconFrameProvider):
         self._check_ret(ret, "MV_CC_CreateHandle")
         ret = cam.MV_CC_OpenDevice(MV_ACCESS_Exclusive, 0)
         self._check_ret(ret, "MV_CC_OpenDevice")
+        # Record the handle immediately so configuration failures can still
+        # release the device through close().
+        self._cam = cam
 
         # --- configure ---
-        cam.MV_CC_SetEnumValue("TriggerMode", 0)  # continuous
-        cam.MV_CC_SetFloatValue("ExposureTime", self._exposure_time)
-        cam.MV_CC_SetFloatValue("Gain", self._gain)
+        try:
+            self._check_ret(cam.MV_CC_SetEnumValue("TriggerMode", 0), "set TriggerMode=Off")
+            self._check_ret(cam.MV_CC_SetEnumValue("ExposureAuto", 0), "set ExposureAuto=Off")
+            self._check_ret(cam.MV_CC_SetEnumValue("GainAuto", 0), "set GainAuto=Off")
+            if self._pixel_format_mono8:
+                # PFNC Mono8: one 8-bit intensity sample per pixel.
+                self._check_ret(cam.MV_CC_SetEnumValue("PixelFormat", 0x01080001), "set Mono8")
+            self._check_ret(
+                cam.MV_CC_SetFloatValue("ExposureTime", self._exposure_time),
+                "set ExposureTime",
+            )
+            self._check_ret(cam.MV_CC_SetFloatValue("Gain", self._gain), "set Gain")
 
-        ret = cam.MV_CC_StartGrabbing()
-        self._check_ret(ret, "MV_CC_StartGrabbing")
+            ret = cam.MV_CC_StartGrabbing()
+            self._check_ret(ret, "MV_CC_StartGrabbing")
 
-        # --- payload size ---
-        st_param = MVCC_INTVALUE()
-        ctypes.memset(ctypes.byref(st_param), 0, ctypes.sizeof(MVCC_INTVALUE))
-        ret = cam.MV_CC_GetIntValue("PayloadSize", st_param)
-        self._check_ret(ret, "MV_CC_GetIntValue(PayloadSize)")
-
-        self._cam = cam
-        self._payload_size = int(st_param.nCurValue)
+            # --- payload size ---
+            st_param = MVCC_INTVALUE()
+            ctypes.memset(ctypes.byref(st_param), 0, ctypes.sizeof(MVCC_INTVALUE))
+            ret = cam.MV_CC_GetIntValue("PayloadSize", st_param)
+            self._check_ret(ret, "MV_CC_GetIntValue(PayloadSize)")
+            self._payload_size = int(st_param.nCurValue)
+        except Exception:
+            self.close()
+            raise
 
     def close(self) -> None:
         """Stop grabbing and release the camera."""
@@ -385,7 +400,7 @@ class HikrobotFrameProvider(BeaconFrameProvider):
             image=gray,
             source="hikrobot_camera",
             frame_id=self._frame_id,
-            timestamp=time.time(),
+            timestamp=time.monotonic(),
         )
         self._frame_id += 1
         return frame

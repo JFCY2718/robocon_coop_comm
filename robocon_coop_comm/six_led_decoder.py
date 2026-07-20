@@ -42,9 +42,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .beacon_types import BeaconFrame, DecodedBeacon, msg_name_from_id
-from .hikrobot_frame_provider import roi_mean
-
-
 @dataclass(frozen=True)
 class SixLedReading:
     """Raw 6-LED brightness reading from a single camera frame.
@@ -97,6 +94,18 @@ class SixLedRoiDecoder:
         contrast_floor: Minimum centre-minus-background contrast to consider a
             light meaningfully "on" (default: 15).  Below this the LED is
             classified as off regardless of threshold.
+        sample_statistic: ``"mean"`` (legacy) or ``"percentile"``.  A high
+            centre percentile is less sensitive to small projection errors and
+            partial LED coverage than a mean.
+        centre_percentile: Percentile used for the centre ROI when
+            ``sample_statistic="percentile"``.
+        background_percentile: Percentile used for the annular background ROI.
+        hysteresis_fraction: Symmetric threshold dead-band.  A value of 0.12
+            switches on above 1.12×threshold and off below 0.88×threshold;
+            inside the band the previous bit is retained.
+        led_gains: Optional per-LED multiplicative calibration factors.
+        max_saturation_fraction: Maximum allowed fraction of saturated pixels
+            in any centre ROI.  The default 1.0 preserves legacy behaviour.
     """
 
     def __init__(
@@ -112,6 +121,12 @@ class SixLedRoiDecoder:
         background_ring: bool = False,
         ring_ratio: float = 2.5,
         contrast_floor: float = 15.0,
+        sample_statistic: str = "mean",
+        centre_percentile: float = 70.0,
+        background_percentile: float = 50.0,
+        hysteresis_fraction: float = 0.0,
+        led_gains: dict[str, float] | None = None,
+        max_saturation_fraction: float = 1.0,
     ) -> None:
         self.threshold = int(threshold)
         self.roi_size = int(roi_size)
@@ -127,8 +142,28 @@ class SixLedRoiDecoder:
         self.background_ring = bool(background_ring)
         self.ring_ratio = float(ring_ratio)
         self.contrast_floor = float(contrast_floor)
+        if sample_statistic not in {"mean", "percentile"}:
+            raise ValueError("sample_statistic must be 'mean' or 'percentile'")
+        if not 0.0 <= centre_percentile <= 100.0:
+            raise ValueError("centre_percentile must be in [0, 100]")
+        if not 0.0 <= background_percentile <= 100.0:
+            raise ValueError("background_percentile must be in [0, 100]")
+        if not 0.0 <= hysteresis_fraction < 0.5:
+            raise ValueError("hysteresis_fraction must be in [0, 0.5)")
+        if not 0.0 <= max_saturation_fraction <= 1.0:
+            raise ValueError("max_saturation_fraction must be in [0, 1]")
+        gains = dict(led_gains or {})
+        if any(float(value) <= 0.0 for value in gains.values()):
+            raise ValueError("all led_gains values must be positive")
+        self.sample_statistic = sample_statistic
+        self.centre_percentile = float(centre_percentile)
+        self.background_percentile = float(background_percentile)
+        self.hysteresis_fraction = float(hysteresis_fraction)
+        self.led_gains = {str(name): float(value) for name, value in gains.items()}
+        self.max_saturation_fraction = float(max_saturation_fraction)
         # Expose the effective threshold from the last decode (read-only).
         self._effective_threshold: float = float(threshold)
+        self._last_bits: dict[str, int] = {}
 
     @property
     def effective_threshold(self) -> float:
@@ -162,6 +197,8 @@ class SixLedRoiDecoder:
         brightness: dict[str, float] = {}
         raw_centre: dict[str, float] = {}
         bg_values: dict[str, float] = {}
+        raw_brightness: dict[str, float] = {}
+        saturation_fraction: dict[str, float] = {}
         all_within_bounds = True
         h, w = image.shape[:2]
 
@@ -174,20 +211,51 @@ class SixLedRoiDecoder:
                 continue
 
             radius = max(1, int(rp.radius_px))
+            sample_extent = (
+                int(round(radius * self.ring_ratio))
+                if self.background_ring
+                else radius
+            )
+            if (
+                rp.x_px - sample_extent < 0
+                or rp.y_px - sample_extent < 0
+                or rp.x_px + sample_extent >= w
+                or rp.y_px + sample_extent >= h
+            ):
+                all_within_bounds = False
             if self.sample_shape == "circle":
-                centre = _circle_roi_mean(image, rp.x_px, rp.y_px, radius)
+                centre_values = _circle_roi_values(image, rp.x_px, rp.y_px, radius)
             else:
-                centre = roi_mean(image, rp.x_px, rp.y_px, radius * 2)
+                centre_values = _square_roi_values(image, rp.x_px, rp.y_px, radius * 2)
+            centre = _sample_statistic(
+                centre_values,
+                self.sample_statistic,
+                self.centre_percentile,
+            )
             raw_centre[rp.name] = float(centre)
+            saturation_fraction[rp.name] = _saturation_fraction(centre_values)
 
             if self.background_ring:
                 inner = int(round(radius * self.ring_ratio * 0.7))
                 outer = int(round(radius * self.ring_ratio))
-                bg = _ring_roi_mean(image, rp.x_px, rp.y_px, max(1, inner), max(inner + 1, outer))
+                ring_values = _ring_roi_values(
+                    image,
+                    rp.x_px,
+                    rp.y_px,
+                    max(1, inner),
+                    max(inner + 1, outer),
+                )
+                bg = _sample_statistic(
+                    ring_values,
+                    self.sample_statistic,
+                    self.background_percentile,
+                )
                 bg_values[rp.name] = float(bg)
-                brightness[rp.name] = float(centre) - float(bg)
+                raw_brightness[rp.name] = float(centre) - float(bg)
             else:
-                brightness[rp.name] = float(centre)
+                raw_brightness[rp.name] = float(centre)
+            gain = self.led_gains.get(rp.name, 1.0)
+            brightness[rp.name] = raw_brightness[rp.name] * gain
 
         # --- determine effective threshold ------------------------------------
         if self.adaptive_threshold and "REF" in brightness:
@@ -201,32 +269,52 @@ class SixLedRoiDecoder:
 
         # --- bit decision -----------------------------------------------------
         thr = self._effective_threshold
+        uncertain_leds: list[str] = []
         for rp in roi_points:
             if rp.name not in brightness:
                 bits[rp.name] = 0
                 continue
             b = brightness[rp.name]
-            if b > thr:
+            if self.background_ring and b < self.contrast_floor:
+                bits[rp.name] = 0
+            elif self.hysteresis_fraction <= 0.0:
+                bits[rp.name] = int(b > thr)
+            elif b >= thr * (1.0 + self.hysteresis_fraction):
                 bits[rp.name] = 1
-            elif self.background_ring and b < self.contrast_floor:
+            elif b <= thr * (1.0 - self.hysteresis_fraction):
                 bits[rp.name] = 0
             else:
-                bits[rp.name] = 0
+                uncertain_leds.append(rp.name)
+                bits[rp.name] = self._last_bits.get(rp.name, int(b > thr))
 
         # --- confidence & validity --------------------------------------------
         confidence = _compute_confidence(brightness, thr)
+        if uncertain_leds and brightness:
+            confidence *= 1.0 - 0.5 * len(uncertain_leds) / len(brightness)
+            confidence = round(max(0.0, confidence), 4)
         valid = _check_valid(
-            brightness,
+            raw_centre if self.background_ring else brightness,
             all_within_bounds=all_within_bounds,
             min_b=self._min_brightness,
             max_b=self._max_brightness,
         )
+        if (
+            saturation_fraction
+            and max(saturation_fraction.values()) > self.max_saturation_fraction
+        ):
+            valid = False
 
-        extra: dict = {}
+        extra: dict = {
+            "effective_threshold": thr,
+            "raw_brightness": dict(raw_brightness),
+            "saturation_fraction": dict(saturation_fraction),
+            "uncertain_leds": tuple(uncertain_leds),
+        }
         if self.background_ring:
             extra["raw_centre"] = dict(raw_centre)
             extra["bg_values"] = dict(bg_values)
-        extra["effective_threshold"] = thr
+        if valid:
+            self._last_bits = dict(bits)
 
         return SixLedReading(
             bits=bits,
@@ -238,12 +326,27 @@ class SixLedRoiDecoder:
         )
 
 
-def _circle_roi_mean(image, x_px: int, y_px: int, radius_px: int) -> float:
-    """Return mean grayscale intensity inside a circular pixel ROI."""
+def _as_gray(image):
     import cv2
+
+    return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+
+
+def _square_roi_values(image, x_px: int, y_px: int, roi_size: int):
+    """Return grayscale pixel values in a square ROI."""
+    gray = _as_gray(image)
+    height, width = gray.shape[:2]
+    half = max(1, int(roi_size) // 2)
+    x0, x1 = max(0, x_px - half), min(width, x_px + half)
+    y0, y1 = max(0, y_px - half), min(height, y_px + half)
+    return gray[y0:y1, x0:x1].reshape(-1)
+
+
+def _circle_roi_values(image, x_px: int, y_px: int, radius_px: int):
+    """Return grayscale pixel values inside a circular ROI."""
     import numpy as np
 
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+    gray = _as_gray(image)
     height, width = gray.shape[:2]
     radius = max(1, int(radius_px))
     x0, x1 = max(0, x_px - radius), min(width, x_px + radius + 1)
@@ -252,16 +355,14 @@ def _circle_roi_mean(image, x_px: int, y_px: int, radius_px: int) -> float:
         return 0.0
     yy, xx = np.ogrid[y0:y1, x0:x1]
     mask = (xx - x_px) ** 2 + (yy - y_px) ** 2 <= radius**2
-    values = gray[y0:y1, x0:x1][mask]
-    return float(values.mean()) if values.size else 0.0
+    return gray[y0:y1, x0:x1][mask]
 
 
-def _ring_roi_mean(image, x_px: int, y_px: int, inner_r: int, outer_r: int) -> float:
-    """Mean grayscale intensity inside an annular ring (inner_r < r <= outer_r)."""
-    import cv2
+def _ring_roi_values(image, x_px: int, y_px: int, inner_r: int, outer_r: int):
+    """Return grayscale pixel values in an annular background ring."""
     import numpy as np
 
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+    gray = _as_gray(image)
     height, width = gray.shape[:2]
     x0, x1 = max(0, x_px - outer_r), min(width, x_px + outer_r + 1)
     y0, y1 = max(0, y_px - outer_r), min(height, y_px + outer_r + 1)
@@ -270,8 +371,23 @@ def _ring_roi_mean(image, x_px: int, y_px: int, inner_r: int, outer_r: int) -> f
     yy, xx = np.ogrid[y0:y1, x0:x1]
     d2 = (xx - x_px) ** 2 + (yy - y_px) ** 2
     mask = (d2 > inner_r**2) & (d2 <= outer_r**2)
-    values = gray[y0:y1, x0:x1][mask]
-    return float(values.mean()) if values.size else 0.0
+    return gray[y0:y1, x0:x1][mask]
+
+
+def _sample_statistic(values, statistic: str, percentile: float) -> float:
+    import numpy as np
+
+    if values.size == 0:
+        return 0.0
+    if statistic == "percentile":
+        return float(np.percentile(values, percentile))
+    return float(values.mean())
+
+
+def _saturation_fraction(values) -> float:
+    import numpy as np
+
+    return float(np.mean(values >= 254)) if values.size else 0.0
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -292,8 +408,10 @@ def _compute_confidence(
 
     margins = [abs(b - threshold) for b in brightness.values()]
     avg_margin = sum(margins) / len(margins)
-    # Scale: margin of 0 → 0.0, margin of 100+ → 1.0.
-    return round(min(1.0, max(0.0, avg_margin / 100.0)), 4)
+    # Normalise to the operating threshold.  This keeps confidence meaningful
+    # when REF-relative contrast thresholds are much lower than raw Mono8 values.
+    scale = max(20.0, abs(float(threshold)))
+    return round(min(1.0, max(0.0, avg_margin / scale)), 4)
 
 
 def _check_valid(

@@ -56,13 +56,13 @@ class R2MissionFSM:
 
     Args:
         min_confidence: Minimum beacon confidence to accept (default 0.7).
-        max_age_s: Maximum beacon age in seconds before stale rejection (default 2.0).
+        max_age_s: Maximum beacon age in seconds before stale rejection (default 0.3).
     """
 
     def __init__(
         self,
         min_confidence: float = 0.7,
-        max_age_s: float = 2.0,
+        max_age_s: float = 0.3,
     ) -> None:
         self.state = R2State.WAIT_R1
         self.last_seq: int | None = None

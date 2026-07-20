@@ -102,6 +102,10 @@ class DynamicSixLedTracker:
         max_hamming: int = 0,
         tag_lost_frames: int = 5,
         camera_params: tuple[float, float, float, float] | None = None,
+        detection_interval: int = 1,
+        track_between_detections: bool = False,
+        max_optical_flow_error: float = 12.0,
+        max_optical_flow_displacement_px: float = 80.0,
     ) -> None:
         self.detector = detector
         self.geometry = geometry or BeaconGeometry()
@@ -112,34 +116,46 @@ class DynamicSixLedTracker:
         self.max_hamming = int(max_hamming)
         self.tag_lost_frames = max(0, int(tag_lost_frames))
         self.camera_params = camera_params
+        if detection_interval < 1:
+            raise ValueError("detection_interval must be >= 1")
+        self.detection_interval = int(detection_interval)
+        self.track_between_detections = bool(track_between_detections)
+        self.max_optical_flow_error = float(max_optical_flow_error)
+        self.max_optical_flow_displacement_px = float(max_optical_flow_displacement_px)
         self._lost_frames = 0
         self._last_rois: tuple[RoiPoint, ...] = ()
+        self._last_tag: TagDetection | None = None
+        self._previous_gray = None
+        self._frames_since_detection = 0
 
     def process(self, frame: BeaconFrame) -> DynamicSixLedResult:
         if frame.image is None:
             return self._invalid(frame, "null_image")
-        try:
-            if self.camera_params is None:
-                detections = self.detector.detect(frame.image)
-            else:
-                detections = self.detector.detect(
-                    frame.image,
-                    estimate_pose=True,
-                    camera_params=self.camera_params,
-                    tag_size_m=self.geometry.tag_size_mm / 1000.0,
-                )
-        except Exception as exc:
-            return self._invalid(frame, f"apriltag_detect_error: {exc}")
+        tag = self._track_tag(frame.image)
+        tracked = tag is not None
+        if tag is None:
+            try:
+                if self.camera_params is None:
+                    detections = self.detector.detect(frame.image)
+                else:
+                    detections = self.detector.detect(
+                        frame.image,
+                        estimate_pose=True,
+                        camera_params=self.camera_params,
+                        tag_size_m=self.geometry.tag_size_mm / 1000.0,
+                    )
+            except Exception as exc:
+                return self._invalid(frame, f"apriltag_detect_error: {exc}")
 
-        matching = [tag for tag in detections if tag.tag_id == self.target_tag_id]
-        if not matching:
-            reason = "no_tag_detected" if not detections else "tag_id_mismatch"
-            return self._invalid(frame, reason)
-        tag = max(matching, key=lambda item: item.decision_margin)
-        if tag.hamming > self.max_hamming:
-            return self._invalid(frame, "tag_hamming_exceeded", tag)
-        if tag.decision_margin < self.min_decision_margin:
-            return self._invalid(frame, "tag_margin_too_low", tag)
+            matching = [item for item in detections if item.tag_id == self.target_tag_id]
+            if not matching:
+                reason = "no_tag_detected" if not detections else "tag_id_mismatch"
+                return self._invalid(frame, reason)
+            tag = max(matching, key=lambda item: item.decision_margin)
+            if tag.hamming > self.max_hamming:
+                return self._invalid(frame, "tag_hamming_exceeded", tag)
+            if tag.decision_margin < self.min_decision_margin:
+                return self._invalid(frame, "tag_margin_too_low", tag)
 
         projection = self.projector.project(tag.corners, frame.image.shape[:2])
         if not projection.valid:
@@ -147,6 +163,7 @@ class DynamicSixLedTracker:
 
         self._lost_frames = 0
         self._last_rois = projection.rois
+        self._remember_tag(frame.image, tag, tracked=tracked)
         reading = self.decoder.decode(frame, projection.rois)
         reason = "" if reading.valid else "sixled_reading_invalid"
         reading = _with_metadata(reading, tag, projection.rois, reason)
@@ -154,12 +171,80 @@ class DynamicSixLedTracker:
             reading, tag, projection.rois, reading.valid, reason, self._lost_frames
         )
 
+    def _track_tag(self, image) -> TagDetection | None:
+        if (
+            not self.track_between_detections
+            or self.detection_interval <= 1
+            or self._last_tag is None
+            or self._previous_gray is None
+            or self._frames_since_detection >= self.detection_interval - 1
+        ):
+            return None
+
+        import cv2
+        import numpy as np
+
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+        previous = np.asarray(self._last_tag.corners, dtype=np.float32).reshape(-1, 1, 2)
+        current, status, error = cv2.calcOpticalFlowPyrLK(
+            self._previous_gray,
+            gray,
+            previous,
+            None,
+            winSize=(21, 21),
+            maxLevel=3,
+            criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 20, 0.03),
+        )
+        if current is None or status is None or error is None:
+            return None
+        if not bool(np.all(status.reshape(-1) == 1)):
+            return None
+        points = current.reshape(-1, 2)
+        errors = error.reshape(-1)
+        if not np.isfinite(points).all() or not np.isfinite(errors).all():
+            return None
+        if float(np.max(errors)) > self.max_optical_flow_error:
+            return None
+        displacement = np.linalg.norm(points - previous.reshape(-1, 2), axis=1)
+        if float(np.max(displacement)) > self.max_optical_flow_displacement_px:
+            return None
+        if not _valid_quadrilateral(points, gray.shape[:2]):
+            return None
+
+        center = tuple(float(value) for value in points.mean(axis=0))
+        extra = dict(self._last_tag.extra)
+        extra.update({"tracked": True, "optical_flow_max_error": float(np.max(errors))})
+        return TagDetection(
+            tag_id=self._last_tag.tag_id,
+            family=self._last_tag.family,
+            corners=[tuple(float(value) for value in point) for point in points],
+            center=center,
+            decision_margin=self._last_tag.decision_margin,
+            hamming=self._last_tag.hamming,
+            extra=extra,
+        )
+
+    def _remember_tag(self, image, tag: TagDetection, *, tracked: bool) -> None:
+        import cv2
+
+        self._previous_gray = (
+            cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+        ).copy()
+        self._last_tag = tag
+        if tracked:
+            self._frames_since_detection += 1
+        else:
+            self._frames_since_detection = 0
+
     def _invalid(
         self,
         frame: BeaconFrame,
         reason: str,
         tag: TagDetection | None = None,
     ) -> DynamicSixLedResult:
+        self._last_tag = None
+        self._previous_gray = None
+        self._frames_since_detection = 0
         self._lost_frames += 1
         debug_rois = self._last_rois if self._lost_frames <= self.tag_lost_frames else ()
         reading = SixLedReading(
@@ -188,6 +273,24 @@ def _project(homography, x_mm: float, y_mm: float) -> tuple[float, float] | None
     return float(projected[0] / projected[2]), float(projected[1] / projected[2])
 
 
+def _valid_quadrilateral(points, image_shape: tuple[int, int]) -> bool:
+    import cv2
+    import numpy as np
+
+    if points.shape != (4, 2):
+        return False
+    height, width = image_shape
+    if (
+        np.any(points[:, 0] < 0)
+        or np.any(points[:, 0] >= width)
+        or np.any(points[:, 1] < 0)
+        or np.any(points[:, 1] >= height)
+    ):
+        return False
+    contour = points.astype(np.float32).reshape(-1, 1, 2)
+    return bool(cv2.isContourConvex(contour) and abs(cv2.contourArea(contour)) >= 100.0)
+
+
 def _with_metadata(
     reading: SixLedReading,
     tag: TagDetection,
@@ -202,6 +305,8 @@ def _with_metadata(
             "tag_center_px": tag.center,
             "tag_decision_margin": tag.decision_margin,
             "tag_hamming": tag.hamming,
+            "tag_tracked": bool(tag.extra.get("tracked", False)),
+            "optical_flow_max_error": tag.extra.get("optical_flow_max_error"),
             "dynamic_rois": tuple((r.name, r.x_px, r.y_px, r.radius_px) for r in rois),
         }
     )

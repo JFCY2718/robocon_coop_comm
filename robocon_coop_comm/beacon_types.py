@@ -89,7 +89,7 @@ class BeaconEvent:
     def is_actionable(
         self,
         min_confidence: float = 0.7,
-        max_age_s: float = 2.0,
+        max_age_s: float = 0.3,
         now: float | None = None,
     ) -> bool:
         """Return True if this event meets confidence and staleness thresholds.

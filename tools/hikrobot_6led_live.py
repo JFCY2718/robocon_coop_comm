@@ -53,6 +53,9 @@ _SIXLED_CSV_EXTRA_COLUMNS = [
     "D0_mean", "D1_mean", "D2_mean", "D3_mean", "REF_mean", "PAR_mean",
     "roi_mode", "tag_seen", "tag_id", "tag_center_x", "tag_center_y",
     "tag_decision_margin", "tag_hamming", "dynamic_roi_valid", "invalid_reason",
+    "tag_tracked", "effective_threshold", "saturation_max", "uncertain_leds",
+    "raw_msg_id", "gated_msg_id", "gated_valid", "gated_reason",
+    "capture_age_ms", "dropped_frames",
 ]
 
 
@@ -114,6 +117,45 @@ def _save_roi_file(path: str, points: list[tuple[int, int]], **extra) -> None:
     print(f"\nROI saved to {path}")
 
 
+def _load_led_gains(path: str | None) -> dict[str, float]:
+    if path is None:
+        return {}
+    with open(path, encoding="utf-8") as handle:
+        payload = json.load(handle)
+    gains = payload.get("led_gains", payload)
+    if not isinstance(gains, dict):
+        raise ValueError("LED gain file must be an object or contain a led_gains object")
+    unknown = set(gains) - set(LED_NAMES_6)
+    if unknown:
+        raise ValueError(f"unknown LED gain names: {sorted(unknown)}")
+    return {name: float(value) for name, value in gains.items()}
+
+
+def _apply_competition_preset(args) -> None:
+    """Apply the tested low-latency, ambient-robust defaults."""
+    args.protocol = True
+    args.protocol_mode = "four-light"
+    args.roi_mode = "apriltag"
+    args.adaptive = True
+    args.background_ring = True
+    args.sample_statistic = "percentile"
+    args.hysteresis_fraction = 0.12
+    args.max_saturation_fraction = 0.50
+    args.temporal_validate = True
+    args.optical_flow = True
+    args.latest_frame = True
+    if args.exposure == 10000.0:
+        args.exposure = 5000.0
+    if args.gain == 5.0:
+        args.gain = 0.0
+    if args.timeout == 1000:
+        args.timeout = 100
+    if args.tag_detection_interval == 1:
+        args.tag_detection_interval = 2
+    if args.apriltag_threads == 1:
+        args.apriltag_threads = 2
+
+
 # ---------------------------------------------------------------------------
 # LED ROI selector (UI helper)
 # ---------------------------------------------------------------------------
@@ -151,6 +193,10 @@ class LedSelector6:
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Hikrobot 6-LED live decode"
+    )
+    parser.add_argument(
+        "--competition", action="store_true",
+        help="Enable the recommended AprilTag, robust decode, temporal gate and latest-frame preset",
     )
     parser.add_argument(
         "--threshold", type=int, default=120,
@@ -203,6 +249,7 @@ def main() -> None:
     parser.add_argument("--image", help="Decode one offline image instead of opening a camera")
     parser.add_argument("--output-image", help="Write the annotated offline image")
     parser.add_argument("--tag-family", default="tag36h11")
+    parser.add_argument("--apriltag-threads", type=int, default=1)
     parser.add_argument("--tag-id", type=int, default=0)
     parser.add_argument("--tag-size", type=float, default=0.150, help="Black tag edge in metres")
     parser.add_argument("--tag-min-margin", type=float, default=30.0)
@@ -211,6 +258,15 @@ def main() -> None:
     parser.add_argument("--camera-calibration", help="Validated JSON intrinsics for optional pose")
     parser.add_argument("--roi-radius-scale", type=float, default=0.65)
     parser.add_argument("--tag-lost-frames", type=int, default=5)
+    parser.add_argument("--tag-detection-interval", type=int, default=1)
+    parser.add_argument(
+        "--optical-flow", action="store_true",
+        help="Track tag corners between periodic full detections",
+    )
+    parser.add_argument(
+        "--latest-frame", action="store_true",
+        help="Use a one-frame asynchronous buffer so queued old frames are dropped",
+    )
     parser.add_argument("--draw-tag", action="store_true")
     parser.add_argument("--draw-dynamic-rois", action="store_true")
     parser.add_argument(
@@ -237,20 +293,50 @@ def main() -> None:
         "--contrast-floor", type=float, default=15.0,
         help="Minimum centre-minus-background contrast to classify as 'on' (default: 15)",
     )
+    parser.add_argument(
+        "--sample-statistic", choices=["mean", "percentile"], default="mean",
+        help="ROI statistic; percentile is more tolerant of small projection errors",
+    )
+    parser.add_argument("--centre-percentile", type=float, default=70.0)
+    parser.add_argument("--background-percentile", type=float, default=50.0)
+    parser.add_argument("--hysteresis-fraction", type=float, default=0.0)
+    parser.add_argument("--max-saturation-fraction", type=float, default=1.0)
+    parser.add_argument(
+        "--led-gains", help="JSON file containing optional per-LED multiplicative gains",
+    )
+    parser.add_argument(
+        "--temporal-validate", action="store_true",
+        help="Require an M-of-N vote; motion-authorising states require consecutive frames",
+    )
+    parser.add_argument("--temporal-window", type=int, default=5)
+    parser.add_argument("--temporal-min-matches", type=int, default=3)
+    parser.add_argument("--dangerous-consecutive", type=int, default=5)
+    parser.add_argument("--min-protocol-confidence", type=float, default=0.70)
+    parser.add_argument("--max-signal-age", type=float, default=0.30)
     args = parser.parse_args()
+
+    if args.competition:
+        _apply_competition_preset(args)
 
     if args.tag_size <= 0:
         parser.error("--tag-size must be positive")
+    if args.apriltag_threads < 1:
+        parser.error("--apriltag-threads must be >= 1")
+    if args.tag_detection_interval < 1:
+        parser.error("--tag-detection-interval must be >= 1")
     if args.pose and not args.camera_calibration:
         parser.error("--pose requires --camera-calibration; example intrinsics are not accepted")
+    if args.temporal_validate and not args.protocol:
+        parser.error("--temporal-validate requires --protocol")
+    if args.temporal_validate and args.protocol_mode != "four-light":
+        parser.error("--temporal-validate currently supports --protocol-mode four-light")
 
     cv2 = _get_cv2()
 
     # Lazy imports so --help works without the package.
     try:
-        from robocon_coop_comm.hikrobot_frame_provider import (
-            HikrobotFrameProvider,
-        )
+        from robocon_coop_comm.hikrobot_frame_provider import HikrobotFrameProvider
+        from robocon_coop_comm.latest_frame_provider import LatestFrameProvider
         from robocon_coop_comm.six_led_decoder import SixLedRoiDecoder
         from robocon_coop_comm.frame_logger import FrameLogger
     except ImportError as exc:
@@ -268,6 +354,18 @@ def main() -> None:
             six_led_to_coop_beacon
             if args.protocol_mode == "four-light"
             else six_led_to_decoded_beacon
+        )
+
+    temporal_validator = None
+    if args.temporal_validate:
+        from robocon_coop_comm.temporal_beacon_validator import TemporalBeaconValidator
+
+        temporal_validator = TemporalBeaconValidator(
+            window_size=args.temporal_window,
+            min_matches=args.temporal_min_matches,
+            dangerous_consecutive=args.dangerous_consecutive,
+            min_confidence=args.min_protocol_confidence,
+            max_age_s=args.max_signal_age,
         )
 
     # --- load ROI from file (skip clicking) ---
@@ -288,6 +386,11 @@ def main() -> None:
         logger = FrameLogger(args.log, format=args.log_format, extra_columns=_SIXLED_CSV_EXTRA_COLUMNS)
         print(f"Logging to {args.log} (format={args.log_format})")
 
+    try:
+        led_gains = _load_led_gains(args.led_gains)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        parser.error(f"cannot load --led-gains: {exc}")
+
     decoder = SixLedRoiDecoder(
         threshold=args.threshold,
         roi_size=args.roi_size,
@@ -297,6 +400,12 @@ def main() -> None:
         background_ring=args.background_ring,
         ring_ratio=args.ring_ratio,
         contrast_floor=args.contrast_floor,
+        sample_statistic=args.sample_statistic,
+        centre_percentile=args.centre_percentile,
+        background_percentile=args.background_percentile,
+        hysteresis_fraction=args.hysteresis_fraction,
+        led_gains=led_gains,
+        max_saturation_fraction=args.max_saturation_fraction,
     )
     dynamic_tracker = None
     if args.roi_mode == "apriltag":
@@ -321,7 +430,7 @@ def main() -> None:
         if args.camera_calibration:
             calibration = CameraCalibration.from_json(args.camera_calibration)
         dynamic_tracker = DynamicSixLedTracker(
-            ApriltagDetector(families=args.tag_family),
+            ApriltagDetector(families=args.tag_family, nthreads=args.apriltag_threads),
             geometry,
             decoder,
             target_tag_id=args.tag_id,
@@ -331,8 +440,10 @@ def main() -> None:
             camera_params=(
                 None if calibration is None or not args.pose else calibration.pupil_camera_params
             ),
+            detection_interval=args.tag_detection_interval,
+            track_between_detections=args.optical_flow,
         )
-    provider: HikrobotFrameProvider | None = None
+    provider = None
     selector = LedSelector6()   # safe to create outside try — no SDK needed
     if preloaded_points is not None:
         selector.points = list(preloaded_points)
@@ -381,6 +492,11 @@ def main() -> None:
             "dynamic_rois": [
                 [roi.name, roi.x_px, roi.y_px, roi.radius_px] for roi in roi_points
             ],
+            "protocol": (
+                None
+                if not args.protocol
+                else protocol_decoder(reading, source="6led_offline").__dict__
+            ),
         }, ensure_ascii=False))
         if args.output_image:
             display = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
@@ -392,10 +508,15 @@ def main() -> None:
         return
 
     try:
-        provider = HikrobotFrameProvider(
+        camera_provider = HikrobotFrameProvider(
             exposure_time=args.exposure,
             gain=args.gain,
             timeout_ms=args.timeout,
+        )
+        provider = (
+            LatestFrameProvider(camera_provider, wait_timeout_s=max(0.1, args.timeout / 1000.0 * 2))
+            if args.latest_frame
+            else camera_provider
         )
         provider.open()
 
@@ -427,6 +548,11 @@ def main() -> None:
                 continue
 
             gray = frame.image
+            capture_age_ms = (
+                0.0
+                if frame.timestamp is None
+                else max(0.0, (time.monotonic() - frame.timestamp) * 1000.0)
+            )
             display = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
 
             dynamic_result = None
@@ -451,6 +577,18 @@ def main() -> None:
 
             if ready_to_display:
                 latency_ms = (time.perf_counter() - t_grab) * 1000.0
+                raw_proto = None
+                gated_proto = None
+                if args.protocol:
+                    raw_proto = protocol_decoder(reading, source="6led_live")
+                    gated_proto = (
+                        raw_proto
+                        if temporal_validator is None
+                        else temporal_validator.update(
+                            raw_proto,
+                            timestamp=frame.timestamp,
+                        )
+                    )
 
                 # --- draw ROI overlays ---
                 for rp in roi_points:
@@ -489,7 +627,7 @@ def main() -> None:
                     f"  {'contrast' if args.background_ring else 'raw'}  "
                     f"mask={bit_str}  val=0x{bit_val:02X}",
                     f"conf={reading.confidence:.3f}  valid={reading.valid}"
-                    f"  lat={latency_ms:.1f}ms",
+                    f"  lat={latency_ms:.1f}ms age={capture_age_ms:.1f}ms",
                 ]
                 if dynamic_result is not None:
                     status_lines.append(
@@ -503,10 +641,12 @@ def main() -> None:
                         cv2.line(display, start, end, (255, 255, 0), 2)
 
                 if args.protocol:
-                    proto = protocol_decoder(reading, source="6led_live")
                     status_lines.append(
-                        f"msg_id={proto.msg_id} {proto.msg_name}  "
-                        f"seq={proto.seq}  valid={proto.valid}"
+                        f"raw={raw_proto.msg_id}:{raw_proto.msg_name} "
+                        f"raw_valid={raw_proto.valid} gated={gated_proto.valid}"
+                    )
+                    status_lines.append(
+                        f"gate={gated_proto.reason or '-'} conf={gated_proto.confidence:.2f}"
                     )
 
                 for i, line in enumerate(status_lines):
@@ -526,8 +666,10 @@ def main() -> None:
                     f"conf={reading.confidence:.2f} valid={reading.valid}"
                 )
                 if args.protocol:
-                    proto = protocol_decoder(reading, source="6led_live")
-                    line += f" msg_id={proto.msg_id} {proto.msg_name} seq={proto.seq}"
+                    line += (
+                        f" msg_id={raw_proto.msg_id} {raw_proto.msg_name}"
+                        f" gated={gated_proto.valid} reason={gated_proto.reason or '-'}"
+                    )
                 print(line, end="\r")
 
                 # --- log ---
@@ -549,13 +691,34 @@ def main() -> None:
                         "tag_hamming": "" if not dynamic_result or not dynamic_result.tag else dynamic_result.tag.hamming,
                         "dynamic_roi_valid": "" if dynamic_result is None else dynamic_result.valid,
                         "invalid_reason": "" if dynamic_result is None else dynamic_result.invalid_reason,
+                        "tag_tracked": bool(
+                            dynamic_result
+                            and dynamic_result.tag
+                            and dynamic_result.tag.extra.get("tracked", False)
+                        ),
+                        "effective_threshold": decoder.effective_threshold,
+                        "saturation_max": max(
+                            reading.extra.get("saturation_fraction", {}).values(),
+                            default=0.0,
+                        ),
+                        "uncertain_leds": ",".join(reading.extra.get("uncertain_leds", ())),
+                        "raw_msg_id": "" if raw_proto is None else raw_proto.msg_id,
+                        "gated_msg_id": "" if gated_proto is None else gated_proto.msg_id,
+                        "gated_valid": "" if gated_proto is None else gated_proto.valid,
+                        "gated_reason": "" if gated_proto is None else gated_proto.reason,
+                        "capture_age_ms": f"{capture_age_ms:.2f}",
+                        "dropped_frames": getattr(provider, "dropped_frames", 0),
                     }
                     logger.log(
                         timestamp=time.time(),
-                        msg_id=0,  # 6-LED vision layer doesn't decode msg_id
-                        seq=0,
-                        valid=reading.valid,
-                        confidence=reading.confidence,
+                        msg_id=0 if gated_proto is None else gated_proto.msg_id,
+                        seq=0 if gated_proto is None else gated_proto.seq,
+                        valid=reading.valid if gated_proto is None else gated_proto.valid,
+                        confidence=(
+                            reading.confidence
+                            if gated_proto is None
+                            else gated_proto.confidence
+                        ),
                         latency_ms=latency_ms,
                         extra=log_extra,
                     )

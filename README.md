@@ -5,14 +5,15 @@ ROBOCON 2026「武林探秘」R1/R2 两机协作通信项目。
 **通信方案：AprilTag 定位 + LED 二进制光码。**
 R1 通过 LED 光码板发出状态信号，R2 通过摄像头 + AprilTag 检测解码。
 
-> 📌 **当前状态（2026-06-22）**：
-> - ✅ 软件协议与状态机已完成 (634 tests passed)
+> 📌 **当前状态（2026-07-20）**：
+> - ✅ 软件协议、状态机与竞赛视觉增强已完成 (736 tests passed)
 > - ✅ STM32F103 + 三灯串口闭环已实机验证通过，ACK 正常
 > - ✅ STM32 六灯全部可点亮 (PA0-PA5)
 > - ✅ M3-1：Hikrobot 三灯识别已工程化
 > - ✅ M3-2：AprilTag 检测 + 透视矫正 + LED ROI 自动采样（软件）
 > - ✅ M3-3：R2 FSM HOLD/ERROR 安全门控
 > - ✅ M3-5：六灯 ROI 识别 + PatternMapper + 实时工具（软件）
+> - ✅ Round 4C：分位数/背景环/滞回解码、光流、最新帧和危险状态时间门控（软件）
 > - ✅ **Round FSM-A**：R1/R2 Mission FSM safety hardening
 >   - R2 FSM: confidence / staleness / local_estop guards
 >   - R1 FSM: ABORT 状态 + local_estop
@@ -87,7 +88,7 @@ pip install -e ".[dev,vision]"
 
 ```bash
 ./tools/test.sh
-# 期望：188+ passed
+# 期望：736 passed
 ```
 
 ### 4. 跑一个 demo 看看效果
@@ -222,7 +223,7 @@ robocon_coop_comm/
 │   │   ├── README.md                #   烧录/接线说明
 │   │   └── PROTOCOL.md              #   串口协议文档
 │   └── led_beacon_mcu/              # Arduino MCU 固件骨架（参考实现）
-├── test/                        # pytest 单元测试 (215+)
+├── test/                        # pytest 单元测试 (736)
 ├── docs/                        # 协议、架构、硬件文档
 ├── tools/                       # 开发/调试辅助脚本
 ├── .github/workflows/           # GitHub Actions CI
