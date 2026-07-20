@@ -65,18 +65,19 @@ def test_geometry_json_override_preserves_order() -> None:
     assert tuple(name for name, _, _ in geometry.led_centers_mm) == LED_ORDER
 
 
-def test_competition_geometry_file_loads() -> None:
+def test_competition_geometry_file_preserves_existing_board() -> None:
     path = (
         Path(__file__).parent.parent
         / "data"
         / "sixled"
         / "configs"
-        / "competition_beacon_320x240.json"
+        / "competition_beacon_280x220.json"
     )
     geometry = BeaconGeometry.from_json(path)
-    assert geometry.board_width_mm == 320.0
-    assert geometry.board_height_mm == 240.0
+    assert geometry.board_width_mm == 280.0
+    assert geometry.board_height_mm == 220.0
     assert geometry.tag_size_mm == 150.0
+    assert geometry.tag_center_mm == (-55.0, 0.0)
     assert tuple(name for name, _, _ in geometry.led_centers_mm) == LED_ORDER
 
 

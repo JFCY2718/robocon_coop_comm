@@ -20,8 +20,9 @@
 
 ## 推荐结构
 
-优先使用 320 x 240 mm 哑光黑色背板，配置文件为：
-`data/sixled/configs/competition_beacon_320x240.json`。
+保持现有 280 x 220 mm Beacon 板、孔位、Tag 和六灯坐标不变。显式配置文件为：
+`data/sixled/configs/competition_beacon_280x220.json`。该文件与当前内置几何一致，
+用于锁定比赛配置并防止现场参数误改，不要求重新制作 Beacon 板。
 
 | 项目 | 推荐值 |
 |---|---:|
@@ -43,7 +44,7 @@
 ```bash
 python3 tools/hikrobot_6led_live.py \
   --competition \
-  --beacon-layout data/sixled/configs/competition_beacon_320x240.json \
+  --beacon-layout data/sixled/configs/competition_beacon_280x220.json \
   --draw-tag --draw-dynamic-rois \
   --log data/sixled/logs/competition.csv
 ```
@@ -80,16 +81,17 @@ gain_i = median(REF_on) / median(LED_i_on)
 若某路增益明显超出 0.7 到 1.4，优先检查 LED、限流电阻、扩散罩和接线，不要仅靠软件
 放大补偿硬件缺陷。
 
-## 你需要完成的实体工作
+## 你需要完成的现场标定
 
-1. 制作并固定 320 x 240 mm 哑光背板；测量并记录 Tag 的真实黑边长度。
-2. 固定相机支架、镜头焦距和光圈；确保最大工作距离下 Tag 黑边仍有足够像素。
-3. 逐路核对 PA0 到 PA5 与 `D0,D1,D2,D3,REF,PAR` 的对应关系。
-4. 完成六路亮度测量并生成实际 LED 增益文件。
-5. 在 1 m、1.5 m、3 m 和实际最大距离，正视、±30°、±45°分别采集日志。
-6. 自动遍历 16 个协议状态，每状态至少 100 次切换；保留 expected 和 observed 日志。
-7. 执行 Tag 遮挡、REF 断开、PAR 错误、相机断开和快速运动测试。
-8. 在电机与危险执行器断开的条件下，最后才接 R2MissionFSM 做 dry-run。
+1. 保持现有 280 x 220 mm 板、Tag 和六灯孔位不变，只复核实际尺寸与软件配置一致。
+2. 测量并记录现有 Tag 的真实黑边长度，不改变 Tag 安装位置。
+3. 固定相机支架、镜头焦距和光圈；确保最大工作距离下 Tag 黑边仍有足够像素。
+4. 逐路核对 PA0 到 PA5 与 `D0,D1,D2,D3,REF,PAR` 的对应关系。
+5. 完成六路亮度测量并生成实际 LED 增益文件。
+6. 在 1 m、1.5 m、3 m 和实际最大距离，正视、±30°、±45°分别采集日志。
+7. 自动遍历 16 个协议状态，每状态至少 100 次切换；保留 expected 和 observed 日志。
+8. 执行 Tag 遮挡、REF 断开、PAR 错误、相机断开和快速运动测试。
+9. 在电机与危险执行器断开的条件下，最后才接 R2MissionFSM 做 dry-run。
 
 真实日志、现场图片、ROI 和测量增益默认保留本地，不提交到 Git。
 

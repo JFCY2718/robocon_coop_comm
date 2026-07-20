@@ -142,6 +142,7 @@ decision-margin distribution, ROI radius scale, motion blur results, and
 maximum reliable distance. Unit tests and offline images do not replace these
 measurements.
 
-The legacy built-in board remains 280 x 220 mm for compatibility. New builds
-should pass `data/sixled/configs/competition_beacon_320x240.json` to use the
-recommended 320 x 240 mm carrier without silently changing an existing board.
+The competition board remains 280 x 220 mm with the existing tag and LED
+coordinates. Pass `data/sixled/configs/competition_beacon_280x220.json` when an
+explicit frozen layout is preferred; no board resize or hole-position change is
+required by the software upgrade.

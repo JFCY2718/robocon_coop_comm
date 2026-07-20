@@ -129,7 +129,7 @@ python -m robocon_coop_comm.demo_cv
 - ✅ newest-frame 单槽异步采集，避免旧帧排队
 - ✅ 普通状态 3/5 投票，插入/顶层释放状态连续 5 帧确认
 - ✅ 视觉/FSM 默认 300 ms 新鲜度门限
-- ✅ `--competition` 一键参数和 320 x 240 mm 推荐背板配置
+- ✅ `--competition` 一键参数和现有 280 x 220 mm Beacon 板锁定配置
 - ✅ pytest 736 passed
 - ⬜ 按 `R2_VISION_COMPETITION_UPGRADE.md` 完成真实相机与灯板验收
 
