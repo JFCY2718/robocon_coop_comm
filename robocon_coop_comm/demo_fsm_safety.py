@@ -15,11 +15,9 @@ Usage:
 
 from __future__ import annotations
 
-import time
 import traceback
 from dataclasses import dataclass
 
-from .beacon_types import BeaconEvent
 from .protocol import MsgID, DecodedBeacon
 from .r1_fsm import OperatorCommand, R1MissionFSM, R1Sensors, R1State
 from .r2_fsm import R2MissionFSM, R2Sensors, R2State
@@ -316,7 +314,7 @@ def _r2_stale_beacon() -> list[ScenarioResult]:
 def _r2_retry_reset() -> list[ScenarioResult]:
     results: list[ScenarioResult] = []
     fsm = _fsm_at_r2(R2State.HOLD)
-    out = fsm.update(_b(MsgID.RETRY_RESET, 0), R2Sensors())
+    fsm.update(_b(MsgID.RETRY_RESET, 0), R2Sensors())
     if fsm.state == R2State.WAIT_R1:
         results.append(_ok("R2 RETRY_RESET from HOLD"))
     else:

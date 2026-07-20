@@ -5,7 +5,8 @@
 ```text
 你现在接手 ROBOCON R1/R2 四灯光通信项目的 Ubuntu 实机阶段。
 
-先完整阅读本文件，然后读取三个仓库各自的项目规则、工程审查清单和任务模板。
+先完整阅读本文件和 docs/R2_VISION_FIELD_WORKFLOW.md，然后读取三个仓库各自的
+项目规则、工程审查清单和任务模板。
 先检查 remote、branch、HEAD、tag、working tree，不要立即改代码。
 
 目标链路：
@@ -29,6 +30,14 @@ R1 受保护状态机 -> F407 专用 UART -> STM32F103 Beacon 板
 usart.c 或 main.c，不要复用 USART1 和 USART6。先汇报候选引脚和冲突检查，等待确认。
 ```
 
+## R2 vision operation entry
+
+Use the bilingual [`R2_VISION_FIELD_WORKFLOW.md`](R2_VISION_FIELD_WORKFLOW.md)
+for the operator procedure, Chinese and English copy-paste Ubuntu tasks,
+fixed-ROI baseline, AprilTag automatic ROI workflow, acceptance evidence and
+improvement stages. That guide is subordinate to the safety and repository
+constraints in this handoff.
+
 ## Frozen implementation baseline
 
 | Repository | Branch | Minimum implementation commit |
@@ -50,34 +59,33 @@ do not push to another team's default branch.
 1. Confirm an unused F407 UART and its physical TX/RX pins from the real R1
    controller schematic and wiring. USART1 is the host link and USART6 is the
    receiver link; neither is available for Beacon.
-2. Compile the F407 and F103 firmware with the ARM toolchain. Windows validation
-   did not include a firmware build.
-3. Flash and verify the STM32F103 V2 receiver, six physical outputs, ACK and
+2. Flash and verify the STM32F103 V2 receiver, six physical outputs, ACK and
    300 ms all-off watchdog.
-4. Bind the confirmed F407 UART with `R1Coop_BindBeaconUart(&huartX)`, then prove
+3. Bind the confirmed F407 UART with `R1Coop_BindBeaconUart(&huartX)`, then prove
    R1-to-Beacon ACK and timeout behavior on hardware.
-5. Complete a real Hikrobot 16-state expected-vs-observed run.
+4. Complete a real Hikrobot 16-state expected-vs-observed run.
 
 ### WARNING
 
-1. `send_beacon_uart_v2.py` currently sends one state only. Before the 16-state
-   camera run, add a tested sequence mode that can hold states 0..15 and write
-   an expected CSV compatible with `sixled_expected_observed_check.py`.
-2. The F103 firmware is bare-metal. During the first build/review, verify vector
-   placement, startup assumptions, `.bss` initialization, SysTick at 1 ms and
-   CRC golden vectors before flashing.
-3. The R2 `MissionExecutor` remains dry-run only. Do not connect real actuators
+1. Firmware builds are covered by GitHub Actions, but an Ubuntu build is not a
+   flash or hardware acceptance result. Record the exact toolchain and output
+   before flashing.
+2. The R2 `MissionExecutor` remains dry-run only. Do not connect real actuators
    during optical-link validation.
-4. ROI, threshold, exposure and gain are local hardware calibration data and
+3. ROI, threshold, exposure and gain are local hardware calibration data and
    must not be committed.
 
 ### OK
 
-1. Windows software baseline: vision repository 682 tests passed.
+1. Windows software baseline: vision repository 704 tests passed.
 2. R2 cooperation package: 42 tests passed.
-3. Four-light golden masks and UART CRC vectors have automated tests.
-4. Old F407 `0xAA/0xBB/0xAB` and host `0xBC` protocols remain unchanged.
-5. Cooperation features remain disabled or dry-run by default.
+3. The V2 sender supports state sequences and expected CSV output, and rejects
+   CRC, status, state, or counter mismatches in every ACK.
+4. The F103 reset handler initializes `.data` and `.bss`; source invariants and
+   an ARM firmware-build workflow protect the startup path.
+5. Four-light golden masks and UART CRC vectors have automated tests.
+6. Old F407 `0xAA/0xBB/0xAB` and host `0xBC` protocols remain unchanged.
+7. Cooperation features remain disabled or dry-run by default.
 
 ## Phase 0 - Safety and repository verification
 
@@ -150,7 +158,7 @@ cd ~/rc/robstride_driver_r2/el_a3_ros/robocon_coop_r2
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q
 ```
 
-Expected baseline is 682 vision/cooperation tests and 42 R2 package tests.
+Expected baseline is 704 vision/cooperation tests and 42 R2 package tests.
 Dependency or operating-system differences must be reported separately from
 code failures.
 
@@ -175,9 +183,9 @@ arm-none-eabi-objcopy -O ihex \
 arm-none-eabi-size /tmp/robocon-beacon-build/beacon.elf
 ```
 
-Before flashing, inspect the vector table and startup behavior. If `.bss` is not
-reliably initialized, implement a minimal reset handler with tests/review before
-continuing.
+Before flashing, inspect the vector table and confirm that the reset handler
+copies `.data`, clears `.bss`, and enters `main`. The automated source checks do
+not replace inspection of the linked firmware image.
 
 Flash only after confirming the exact board and SWD connection:
 
@@ -212,26 +220,27 @@ Record:
 Do not connect 24 V loads until six GPIO-level outputs and driver polarity have
 been verified with a meter or logic analyzer.
 
-## Phase 4 - Add V2 sequence and expected-log support
+## Phase 4 - Verify V2 sequence and expected-log support
 
-Extend `tools/send_beacon_uart_v2.py` minimally:
+Sequence mode is implemented. Verify it before connecting hardware:
 
-- accept an ordered state list, defaulting to 0 through 15 only when requested;
-- hold each state for a configurable duration while refreshing at 50 ms;
-- keep validating every ACK;
-- write `start_ts`, `end_ts`, encoded `bitmask`, state value and label to an
-  expected CSV compatible with `sixled_expected_observed_check.py`;
-- add unit tests and CLI help tests;
-- keep single-state behavior backward compatible.
+```bash
+python tools/send_beacon_uart_v2.py --dry-run \
+  --states 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 \
+  --hold-sec 3 --refresh-sec 0.05 \
+  --expected-log /tmp/four_light_expected.csv
+```
 
-Run the full 682-test suite again after this change. Commit only source, tests
-and documentation; never commit the generated expected CSV.
+In hardware mode, any ACK CRC, status, state, or counter mismatch terminates
+the command with a nonzero result. A failed sequence must not be reported as a
+passing expected log. Keep generated CSV files outside the repository.
 
 ## Phase 5 - Select and bind the F407 dedicated UART
 
 This phase must stop for physical pin confirmation.
 
-1. Inspect `Rscontrol2.ioc`, the controller schematic, connector pinout and all
+1. Read `docs/BEACON_UART_CANDIDATES.md`, then inspect `Rscontrol2.ioc`, the
+   controller schematic, connector pinout and all
    current GPIO/CAN/PWM/SWD assignments.
 2. Produce a short candidate table: UART instance, TX pin, RX pin, alternate
    function, connector, voltage, and every detected conflict.
@@ -239,7 +248,9 @@ This phase must stop for physical pin confirmation.
 4. Obtain explicit confirmation of the chosen pins.
 5. Only then update CubeMX/startup UART initialization, interrupt handler and
    call `R1Coop_BindBeaconUart(&huartX)` after UART initialization.
-6. Keep cooperation disabled by default until hardware checks pass.
+6. USART2 on PD5/PD6 is only a software conflict-free candidate. It remains
+   unbound until the schematic and physical connector are confirmed.
+7. Keep cooperation disabled by default until hardware checks pass.
 
 Build outside the repository:
 

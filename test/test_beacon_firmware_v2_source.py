@@ -25,6 +25,20 @@ def test_firmware_contains_v2_crc_ack_and_watchdog() -> None:
     assert "SysTick_Handler" in SOURCE
 
 
+def test_firmware_initializes_c_runtime_sections() -> None:
+    linker = (
+        Path(__file__).parents[1]
+        / "firmware"
+        / "stm32f103_beacon_baremetal"
+        / "stm32f103c8.ld"
+    ).read_text(encoding="utf-8")
+    assert "ENTRY(Reset_Handler)" in linker
+    assert "_sidata = LOADADDR(.data);" in linker
+    assert "while (data < &_edata)" in SOURCE
+    assert "*data++ = *source++;" in SOURCE
+    assert "while (bss < &_ebss)" in SOURCE
+
+
 def test_firmware_uses_fixed_pa0_through_pa5_mask() -> None:
     assert "GPIOA_ODR & ~(PA0 | PA1 | PA2 | PA3 | PA4 | PA5)" in SOURCE
     assert "(state_id & 0x0FU) | 0x10U" in SOURCE

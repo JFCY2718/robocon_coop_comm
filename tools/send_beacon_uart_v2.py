@@ -19,7 +19,7 @@ Supports two modes:
         --repeat 1 \\
         --expected-log /tmp/four_light_expected.csv
 
-Expected CSV columns: start_ts, end_ts, value, state_name, bitmask, label.
+Expected CSV columns: start_ts, end_ts, state_id, value, state_name, bitmask, label.
 The ``bitmask`` column uses the hex format ``"0xNN"``, compatible with
 ``tools/sixled_expected_observed_check.py``.
 """
@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import math
 import os
 import sys
 import time
@@ -39,6 +40,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from robocon_coop_comm.beacon_uart_v2 import (  # noqa: E402
     AckStatus,
+    BeaconAck,
     build_command,
     parse_ack,
 )
@@ -50,7 +52,7 @@ from robocon_coop_comm.sixled_log import bitmask_to_hex_str  # noqa: E402
 
 
 EXPECTED_CSV_FIELDNAMES = [
-    "start_ts", "end_ts", "value", "state_name", "bitmask", "label",
+    "start_ts", "end_ts", "state_id", "value", "state_name", "bitmask", "label",
 ]
 
 
@@ -94,6 +96,7 @@ def _expected_record(state: CoopMessage, start_ts: float, end_ts: float) -> dict
     return {
         "start_ts": f"{start_ts:.6f}",
         "end_ts": f"{end_ts:.6f}",
+        "state_id": state_id,
         "value": state_id,
         "state_name": state.name,
         "bitmask": bitmask_to_hex_str(mask),
@@ -111,18 +114,19 @@ def write_expected_csv(path: str, expected: list[dict]) -> None:
             writer.writerow(rec)
 
 
-def _validate_ack(raw: bytes, expected_state: int, expected_counter: int):
-    """Parse an ACK and require it to match the command just transmitted."""
-    ack = parse_ack(raw)
+def validate_ack(frame: bytes, expected_state: int, expected_counter: int) -> BeaconAck:
+    """Parse an ACK and require an exact successful echo of the command."""
+    ack = parse_ack(frame)
     if ack.status != AckStatus.OK:
-        raise ValueError(f"status={ack.status.name}")
-    if ack.state_id != expected_state:
+        raise ValueError(f"ack_status_{ack.status.name.lower()}")
+    if ack.state_id != int(expected_state):
         raise ValueError(
-            f"state_mismatch expected={expected_state} actual={ack.state_id}"
+            f"ack_state_mismatch expected={int(expected_state)} actual={ack.state_id}"
         )
+    expected_counter &= 0xFF
     if ack.counter != expected_counter:
         raise ValueError(
-            f"counter_mismatch expected={expected_counter} actual={ack.counter}"
+            f"ack_counter_mismatch expected={expected_counter} actual={ack.counter}"
         )
     return ack
 
@@ -228,7 +232,7 @@ def main() -> None:
             counter = 0
             for _repeat in range(args.repeat):
                 for state in state_list:
-                    refreshes = max(1, int(args.hold_sec / args.refresh_sec))
+                    refreshes = max(1, math.ceil(args.hold_sec / args.refresh_sec))
                     for _r in range(refreshes):
                         frames.append(
                             build_command(int(state), counter, args.brightness)
@@ -275,7 +279,7 @@ def main() -> None:
         port = serial.Serial(args.port, args.baud, timeout=max(0.1, args.period))
     except PermissionError:
         print(f"ERROR: permission denied for {args.port}", file=sys.stderr)
-        print(f"  Try: sudo chmod 666 {args.port}", file=sys.stderr)
+        print("  Add the user to the serial-port group, then sign in again.", file=sys.stderr)
         sys.exit(1)
     except Exception as exc:
         print(f"ERROR: cannot open {args.port}: {exc}", file=sys.stderr)
@@ -292,7 +296,7 @@ def main() -> None:
                 port.write(frame)
                 ack_raw = port.read(6)
                 try:
-                    ack = _validate_ack(ack_raw, state_id, counter)
+                    ack = validate_ack(ack_raw, state_id, counter)
                 except ValueError as exc:
                     raise SystemExit(
                         f"invalid ACK {ack_raw.hex(' ')}: {exc}"
@@ -324,7 +328,7 @@ def main() -> None:
                 state_id = int(state)
                 mask = encode_message(state_id)
                 hex_str = bitmask_to_hex_str(mask)
-                refreshes = max(1, int(args.hold_sec / args.refresh_sec))
+                refreshes = max(1, math.ceil(args.hold_sec / args.refresh_sec))
 
                 start_ts = time.time()
                 for refresh_idx in range(refreshes):
@@ -332,10 +336,11 @@ def main() -> None:
                     port.write(frame)
                     ack_raw = port.read(6)
                     try:
-                        ack = _validate_ack(ack_raw, state_id, counter)
+                        ack = validate_ack(ack_raw, state_id, counter)
                     except ValueError as exc:
                         raise SystemExit(
-                            f"invalid ACK {ack_raw.hex(' ')}: {exc}"
+                            f"invalid ACK for state={state.name} counter={counter} "
+                            f"frame={ack_raw.hex(' ')}: {exc}"
                         ) from exc
 
                     counter = (counter + 1) & 0xFF

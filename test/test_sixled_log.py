@@ -6,7 +6,6 @@ import pytest
 
 from robocon_coop_comm.sixled_log import (
     LED_NAMES,
-    LED_BIT_MAP,
     bitmask_to_hex_str,
     bitmask_to_pattern,
     bits_to_bitmask,

@@ -8,6 +8,7 @@ from unittest import mock
 
 import cv2
 import numpy as np
+import pytest
 
 from robocon_coop_comm.apriltag_detector import TagDetection
 from robocon_coop_comm.beacon_geometry import BeaconGeometry, LED_ORDER
@@ -38,14 +39,19 @@ def _frame(frame_id: int = 1) -> BeaconFrame:
 
 def test_default_geometry_and_fixed_bit_order() -> None:
     geometry = BeaconGeometry()
-    assert geometry.tag_center_mm == (-95.0, 0.0)
+    assert geometry.board_width_mm == 280.0
+    assert geometry.board_height_mm == 220.0
+    assert geometry.tag_size_mm == 150.0
+    assert geometry.tag_center_mm == (-55.0, 0.0)
+    assert geometry.led_cap_radius_mm == 11.2
+    assert geometry.roi_radius_mm == pytest.approx(7.28)
     assert geometry.led_centers_tag_mm == (
-        ("D0", 140.0, 45.0),
-        ("D1", 200.0, 45.0),
-        ("D2", 260.0, 45.0),
-        ("D3", 140.0, -45.0),
-        ("REF", 200.0, -45.0),
-        ("PAR", 260.0, -45.0),
+        ("D0", 95.0, 70.0),
+        ("D1", 135.0, 70.0),
+        ("D2", 175.0, 70.0),
+        ("D3", 95.0, 20.0),
+        ("REF", 135.0, 20.0),
+        ("PAR", 175.0, 20.0),
     )
     assert tuple(name for name, _, _ in geometry.led_centers_mm) == LED_ORDER
 
@@ -63,8 +69,8 @@ def test_known_homography_projects_all_six_leds() -> None:
     result = SixLedHomographyProjector(BeaconGeometry()).project(TAG_CORNERS, (800, 900))
     assert result.valid is True
     assert [(r.name, r.x_px, r.y_px) for r in result.rois] == [
-        ("D0", 440, 355), ("D1", 500, 355), ("D2", 560, 355),
-        ("D3", 440, 445), ("REF", 500, 445), ("PAR", 560, 445),
+        ("D0", 395, 330), ("D1", 435, 330), ("D2", 475, 330),
+        ("D3", 395, 380), ("REF", 435, 380), ("PAR", 475, 380),
     ]
 
 
@@ -76,8 +82,10 @@ def test_roi_radius_follows_tag_scale() -> None:
         (1200, 1600),
     )
     assert normal.valid and doubled.valid
+    assert normal.rois[0].radius_px == 7
+    assert doubled.rois[0].radius_px == 15
     ratio = doubled.rois[0].radius_px / normal.rois[0].radius_px
-    assert 1.8 <= ratio <= 2.1
+    assert 1.8 <= ratio <= 2.2
 
 
 def test_perspective_projection_stays_ordered_and_finite() -> None:

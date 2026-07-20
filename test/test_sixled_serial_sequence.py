@@ -7,7 +7,6 @@ import importlib.util
 import io
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -15,7 +14,6 @@ import pytest
 from robocon_coop_comm.sixled_log import (
     bitmask_to_hex_str,
     bitmask_to_pattern,
-    parse_bitmask_str,
 )
 
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from enum import Enum as _Enum, auto as _auto
 
 from .protocol import MsgID
 
@@ -133,9 +134,6 @@ class BeaconEvent:
 # ---------------------------------------------------------------------------
 # ActionIntent — FSM output, NOT a hardware command
 # ---------------------------------------------------------------------------
-
-
-from enum import Enum as _Enum, auto as _auto
 
 
 class ActionIntent(_Enum):

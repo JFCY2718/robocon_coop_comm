@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import argparse
 import time
-from typing import Optional
 
 
 MSG_NAMES = {

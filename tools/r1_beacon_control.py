@@ -128,7 +128,6 @@ class R1BeaconController:
         self.current_msg_id = msg_id
         self.current_seq ^= 1
 
-        name = MSG_ID_TO_COMMAND.get(msg_id, MsgID(msg_id).name)
         print(f"event={MsgID(msg_id).name}")
         print(f"msg_id={msg_id}")
         print(f"seq={self.current_seq}")
