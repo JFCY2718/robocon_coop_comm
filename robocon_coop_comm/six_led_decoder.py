@@ -5,7 +5,28 @@ a bit mask with confidence.  This module does **not** embed competition
 semantics (no msg_id decoding, no FSM decisions).  Protocol-level decoding
 is handled separately.
 
-Outputs a ``SixLedReading`` per frame::
+Modes
+-----
+
+**Fixed threshold** (default)::
+
+    decoder = SixLedRoiDecoder(threshold=120)
+    reading = decoder.decode(frame, roi_points)
+
+**Adaptive threshold** (REF-relative, recommended for real scenes)::
+
+    decoder = SixLedRoiDecoder(adaptive_threshold=True, ref_fraction=0.5)
+    reading = decoder.decode(frame, roi_points)
+    # Threshold = REF_brightness * ref_fraction (auto-computed per frame)
+
+**Background-ring subtraction** (ambient-light robust)::
+
+    decoder = SixLedRoiDecoder(adaptive_threshold=True, background_ring=True)
+    # Uses centre_mean - ring_mean instead of raw centre brightness.
+    # Eliminates ambient-light offset and makes the system invariant
+    # to global illumination changes.
+
+Output::
 
     reading = decoder.decode(frame, roi_points)
     # reading.bits         → {"REF": 1, "D0": 0, "D1": 1, ...}
@@ -13,7 +34,7 @@ Outputs a ``SixLedReading`` per frame::
     # reading.confidence   → 0.87
     # reading.valid        → True
 
-To convert to a protocol ``DecodedBeacon``, use ``six_led_to_decoded_beacon()``.
+To convert to a protocol ``DecodedBeacon``, use ``six_led_to_coop_beacon()``.
 """
 
 from __future__ import annotations
@@ -30,7 +51,8 @@ class SixLedReading:
 
     Attributes:
         bits: Per-LED bit value (0 or 1) after thresholding.
-        brightness: Raw mean brightness per LED.
+        brightness: Raw mean brightness per LED (or centre-minus-background
+            contrast when background_ring is enabled).
         confidence: Aggregate confidence [0, 1].
         valid: Basic validity — ``False`` if any ROI is outside image bounds
             or the brightness values are clearly unreadable.
@@ -54,13 +76,27 @@ class SixLedRoiDecoder:
     """Sample six LED ROI positions and threshold brightness → bit mask.
 
     Args:
-        threshold: Brightness threshold (0–255).  ROI mean > threshold → bit=1.
-        roi_size: Square sampling half-size in pixels.  Passed to ``roi_mean``
-            as the ``size`` parameter (full side length).
+        threshold: Brightness threshold (0–255). Used when ``adaptive_threshold``
+            is disabled.  Ignored otherwise (falls back to ``ref_fraction * 20``).
+        roi_size: Square sampling half-size in pixels (only for ``square`` shape).
         min_roi_brightness: If *any* sampled ROI mean falls below this floor,
             ``valid`` is set to ``False`` (camera may be blocked / too dark).
         max_roi_brightness: If *all* sampled ROI means exceed this ceiling,
             ``valid`` is set to ``False`` (possible over-exposure / glare).
+        sample_shape: ``"square"`` (legacy) or ``"circle"``.
+        adaptive_threshold: When ``True`` the per-frame threshold is computed
+            from the REF LED brightness as ``ref_brightness * ref_fraction``.
+            This is distance/exposure/ambient invariant.
+        ref_fraction: Fraction of REF brightness used as the dynamic threshold
+            when ``adaptive_threshold`` is enabled (default: 0.45).
+        background_ring: When ``True``, sample an annular ring around each LED
+            ROI and compute ``centre_mean - ring_mean`` as the reading.  This
+            cancels out ambient light and handles non-uniform illumination.
+        ring_ratio: Background ring outer radius relative to LED ROI radius
+            (default: 2.5 → ring is 2.5× the LED sampling radius).
+        contrast_floor: Minimum centre-minus-background contrast to consider a
+            light meaningfully "on" (default: 15).  Below this the LED is
+            classified as off regardless of threshold.
     """
 
     def __init__(
@@ -70,6 +106,12 @@ class SixLedRoiDecoder:
         min_roi_brightness: float = 5.0,
         max_roi_brightness: float = 250.0,
         sample_shape: str = "square",
+        *,
+        adaptive_threshold: bool = False,
+        ref_fraction: float = 0.45,
+        background_ring: bool = False,
+        ring_ratio: float = 2.5,
+        contrast_floor: float = 15.0,
     ) -> None:
         self.threshold = int(threshold)
         self.roi_size = int(roi_size)
@@ -78,6 +120,20 @@ class SixLedRoiDecoder:
         if sample_shape not in {"square", "circle"}:
             raise ValueError("sample_shape must be 'square' or 'circle'")
         self.sample_shape = sample_shape
+        self.adaptive_threshold = bool(adaptive_threshold)
+        self.ref_fraction = float(ref_fraction)
+        if not 0.1 <= self.ref_fraction <= 0.9:
+            raise ValueError("ref_fraction must be in [0.1, 0.9]")
+        self.background_ring = bool(background_ring)
+        self.ring_ratio = float(ring_ratio)
+        self.contrast_floor = float(contrast_floor)
+        # Expose the effective threshold from the last decode (read-only).
+        self._effective_threshold: float = float(threshold)
+
+    @property
+    def effective_threshold(self) -> float:
+        """The threshold actually used in the most recent decode call."""
+        return self._effective_threshold
 
     def decode(
         self,
@@ -104,25 +160,61 @@ class SixLedRoiDecoder:
 
         bits: dict[str, int] = {}
         brightness: dict[str, float] = {}
+        raw_centre: dict[str, float] = {}
+        bg_values: dict[str, float] = {}
         all_within_bounds = True
         h, w = image.shape[:2]
 
+        # --- sample every LED -------------------------------------------------
         for rp in roi_points:
-            # Basic bounds check.
             if not (0 <= rp.x_px < w and 0 <= rp.y_px < h):
                 all_within_bounds = False
                 bits[rp.name] = 0
                 brightness[rp.name] = 0.0
                 continue
 
+            radius = max(1, int(rp.radius_px))
             if self.sample_shape == "circle":
-                b = _circle_roi_mean(image, rp.x_px, rp.y_px, rp.radius_px)
+                centre = _circle_roi_mean(image, rp.x_px, rp.y_px, radius)
             else:
-                b = roi_mean(image, rp.x_px, rp.y_px, rp.radius_px * 2)
-            brightness[rp.name] = float(b)
-            bits[rp.name] = 1 if b > self.threshold else 0
+                centre = roi_mean(image, rp.x_px, rp.y_px, radius * 2)
+            raw_centre[rp.name] = float(centre)
 
-        confidence = _compute_confidence(brightness, self.threshold)
+            if self.background_ring:
+                inner = int(round(radius * self.ring_ratio * 0.7))
+                outer = int(round(radius * self.ring_ratio))
+                bg = _ring_roi_mean(image, rp.x_px, rp.y_px, max(1, inner), max(inner + 1, outer))
+                bg_values[rp.name] = float(bg)
+                brightness[rp.name] = float(centre) - float(bg)
+            else:
+                brightness[rp.name] = float(centre)
+
+        # --- determine effective threshold ------------------------------------
+        if self.adaptive_threshold and "REF" in brightness:
+            ref_b = brightness["REF"]
+            if ref_b > self.contrast_floor:
+                self._effective_threshold = ref_b * self.ref_fraction
+            else:
+                self._effective_threshold = float(self.threshold)
+        else:
+            self._effective_threshold = float(self.threshold)
+
+        # --- bit decision -----------------------------------------------------
+        thr = self._effective_threshold
+        for rp in roi_points:
+            if rp.name not in brightness:
+                bits[rp.name] = 0
+                continue
+            b = brightness[rp.name]
+            if b > thr:
+                bits[rp.name] = 1
+            elif self.background_ring and b < self.contrast_floor:
+                bits[rp.name] = 0
+            else:
+                bits[rp.name] = 0
+
+        # --- confidence & validity --------------------------------------------
+        confidence = _compute_confidence(brightness, thr)
         valid = _check_valid(
             brightness,
             all_within_bounds=all_within_bounds,
@@ -130,12 +222,19 @@ class SixLedRoiDecoder:
             max_b=self._max_brightness,
         )
 
+        extra: dict = {}
+        if self.background_ring:
+            extra["raw_centre"] = dict(raw_centre)
+            extra["bg_values"] = dict(bg_values)
+        extra["effective_threshold"] = thr
+
         return SixLedReading(
             bits=bits,
             brightness=brightness,
             confidence=confidence,
             valid=valid,
             frame_id=frame.frame_id,
+            extra=extra,
         )
 
 
@@ -153,6 +252,24 @@ def _circle_roi_mean(image, x_px: int, y_px: int, radius_px: int) -> float:
         return 0.0
     yy, xx = np.ogrid[y0:y1, x0:x1]
     mask = (xx - x_px) ** 2 + (yy - y_px) ** 2 <= radius**2
+    values = gray[y0:y1, x0:x1][mask]
+    return float(values.mean()) if values.size else 0.0
+
+
+def _ring_roi_mean(image, x_px: int, y_px: int, inner_r: int, outer_r: int) -> float:
+    """Mean grayscale intensity inside an annular ring (inner_r < r <= outer_r)."""
+    import cv2
+    import numpy as np
+
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+    height, width = gray.shape[:2]
+    x0, x1 = max(0, x_px - outer_r), min(width, x_px + outer_r + 1)
+    y0, y1 = max(0, y_px - outer_r), min(height, y_px + outer_r + 1)
+    if x0 >= x1 or y0 >= y1:
+        return 0.0
+    yy, xx = np.ogrid[y0:y1, x0:x1]
+    d2 = (xx - x_px) ** 2 + (yy - y_px) ** 2
+    mask = (d2 > inner_r**2) & (d2 <= outer_r**2)
     values = gray[y0:y1, x0:x1][mask]
     return float(values.mean()) if values.size else 0.0
 

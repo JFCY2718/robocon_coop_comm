@@ -217,6 +217,26 @@ def main() -> None:
         "--pose", action="store_true",
         help="Request pose output (requires a real --camera-calibration file)",
     )
+    parser.add_argument(
+        "--adaptive", action="store_true",
+        help="Auto-compute brightness threshold from REF LED (distance/exposure invariant)",
+    )
+    parser.add_argument(
+        "--ref-fraction", type=float, default=0.45,
+        help="Fraction of REF brightness used as threshold in adaptive mode (default: 0.45)",
+    )
+    parser.add_argument(
+        "--background-ring", action="store_true",
+        help="Sample a background ring and use centre-minus-background contrast (ambient-light robust)",
+    )
+    parser.add_argument(
+        "--ring-ratio", type=float, default=2.5,
+        help="Background ring outer radius relative to LED ROI radius (default: 2.5)",
+    )
+    parser.add_argument(
+        "--contrast-floor", type=float, default=15.0,
+        help="Minimum centre-minus-background contrast to classify as 'on' (default: 15)",
+    )
     args = parser.parse_args()
 
     if args.tag_size <= 0:
@@ -272,6 +292,11 @@ def main() -> None:
         threshold=args.threshold,
         roi_size=args.roi_size,
         sample_shape="circle" if args.roi_mode == "apriltag" else "square",
+        adaptive_threshold=args.adaptive,
+        ref_fraction=args.ref_fraction,
+        background_ring=args.background_ring,
+        ring_ratio=args.ring_ratio,
+        contrast_floor=args.contrast_floor,
     )
     dynamic_tracker = None
     if args.roi_mode == "apriltag":
@@ -382,6 +407,13 @@ def main() -> None:
 
         if preloaded_points is not None:
             print("ROI preloaded.  Keys: q=quit, r=re-click, +=threshold up, -=threshold down")
+        elif args.roi_mode == "apriltag":
+            print("AprilTag auto-ROI mode — no clicking needed.")
+            if args.adaptive:
+                print(f"  Adaptive threshold: REF brightness × {args.ref_fraction}")
+            if args.background_ring:
+                print("  Background-ring subtraction: centre − ring (ambient robust)")
+            print("Keys: q=quit, +=threshold up, -=threshold down")
         else:
             print("Click in order:  D0  D1  D2  D3  REF  PAR")
             print("Keys: q=quit, r=reset, s=save ROI, +=threshold up, -=threshold down")
@@ -453,7 +485,9 @@ def main() -> None:
                     bit_val |= (reading.bits.get(name, 0) << LED_BIT_MAP[name])
 
                 status_lines = [
-                    f"thr={threshold}  mask={bit_str}  val=0x{bit_val:02X}",
+                    f"thr={threshold}" + (f"→{decoder.effective_threshold:.0f}" if args.adaptive else "") +
+                    f"  {'contrast' if args.background_ring else 'raw'}  "
+                    f"mask={bit_str}  val=0x{bit_val:02X}",
                     f"conf={reading.confidence:.3f}  valid={reading.valid}"
                     f"  lat={latency_ms:.1f}ms",
                 ]
