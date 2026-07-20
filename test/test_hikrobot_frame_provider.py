@@ -364,15 +364,15 @@ class TestFrameLogger:
         try:
             sixled_cols = [
                 "pattern", "bitmask",
-                "D0", "D1", "D2", "REF", "SEQ", "PAR",
-                "D0_mean", "D1_mean", "D2_mean", "REF_mean", "SEQ_mean", "PAR_mean",
+                "D0", "D1", "D2", "D3", "REF", "PAR",
+                "D0_mean", "D1_mean", "D2_mean", "D3_mean", "REF_mean", "PAR_mean",
             ]
             logger = FrameLogger(tmp_path, format="csv", extra_columns=sixled_cols)
             logger.log(
                 msg_id=0, seq=0, valid=True, confidence=0.5, latency_ms=10.0,
                 extra={
                     "pattern": "111111", "bitmask": "0x3F",
-                    "D0": 1, "D1": 1, "D2": 1, "REF": 1, "SEQ": 1, "PAR": 1,
+                    "D0": 1, "D1": 1, "D2": 1, "D3": 1, "REF": 1, "PAR": 1,
                     "D0_mean": 50.0, "D1_mean": 50.0, "D2_mean": 50.0,
                     "REF_mean": 50.0, "SEQ_mean": 50.0, "PAR_mean": 50.0,
                 },
@@ -389,7 +389,8 @@ class TestFrameLogger:
                 f"header has {len(header_cols)} cols, data has {len(data_cols)} cols"
             )
             # Verify no row[None] would be produced by csv.DictReader
-            import csv, io
+            import csv
+            import io
             reader = csv.DictReader(io.StringIO(content))
             row = next(reader)
             assert None not in row, f"row[None] detected: {row.get(None)}"

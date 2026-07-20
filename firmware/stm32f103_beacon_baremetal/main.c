@@ -18,16 +18,16 @@
  *    PA1 = D1  (msg_id bit 1)
  *    PA2 = D2  (msg_id bit 2)
  *
- *  LED outputs (6-LED mode — reserved for future expansion):
- *    PA3 = REF (always on when frame valid)
- *    PA4 = SEQ (sequence toggle bit)
- *    PA5 = PAR (even parity: D0 ^ D1 ^ D2 ^ SEQ)
+ *  Four-data-light V2 outputs:
+ *    PA3 = D3  (state_id bit 3)
+ *    PA4 = REF (always on for a valid V2 state)
+ *    PA5 = PAR (even parity: D0 ^ D1 ^ D2 ^ D3)
  *
  *  USART1 (serial link to R1 main controller):
  *    PA9  = USART1_TX  (alternate function push-pull)
  *    PA10 = USART1_RX  (input floating)
  *
- * ---- Serial Frame Format (R1 -> MCU, 6 bytes) ----
+ * ---- Legacy Serial Frame Format (preserved, R1 -> MCU, 6 bytes) ----
  *
  *   Byte 0: 0xAA  ─┐ header
  *   Byte 1: 0x55  ─┘
@@ -35,6 +35,16 @@
  *   Byte 3: seq        (0 or 1, toggles on new event)
  *   Byte 4: brightness (0 ~ 255, reserved — no PWM in current fw)
  *   Byte 5: checksum   = msg_id ^ seq ^ brightness
+ *
+ * ---- Four-light V2 Frame (R1 -> MCU, 6 bytes) ----
+ *
+ *   0xBD | 0x02 | state_id(0..15) | counter | brightness | CRC-8/ATM
+ *
+ * V2 ACK:
+ *
+ *   0xBE | 0x02 | state_id | counter | status | CRC-8/ATM
+ *
+ * V2 frames must refresh within 300 ms. On timeout all LEDs turn off.
  *
  * ---- ACK Format (MCU -> R1, 3 bytes) ----
  *
@@ -111,6 +121,11 @@
 #define USART1_BRR  (*((volatile uint32_t *)(USART1_BASE + 0x08)))
 #define USART1_CR1  (*((volatile uint32_t *)(USART1_BASE + 0x0C)))
 
+/* Cortex-M3 SysTick */
+#define SYST_CSR (*((volatile uint32_t *)0xE000E010UL))
+#define SYST_RVR (*((volatile uint32_t *)0xE000E014UL))
+#define SYST_CVR (*((volatile uint32_t *)0xE000E018UL))
+
 /* USART1_SR bits */
 #define USART_SR_RXNE  (1U << 5)  /* Read data register not empty */
 #define USART_SR_TXE   (1U << 7)  /* Transmit data register empty */
@@ -124,15 +139,26 @@
 /* --------------------------------------------------------------------------
  * Frame constants
  * -------------------------------------------------------------------------- */
-#define FRAME_HEADER_0  0xAA
-#define FRAME_HEADER_1  0x55
-#define ACK_HEADER      0xCC
-#define FRAME_LEN       6
+#define LEGACY_HEADER_0       0xAAU
+#define LEGACY_HEADER_1       0x55U
+#define LEGACY_ACK_HEADER     0xCCU
+#define V2_FRAME_HEADER       0xBDU
+#define V2_ACK_HEADER         0xBEU
+#define V2_VERSION            0x02U
+#define V2_STATUS_OK          0x00U
+#define V2_STATUS_BAD_VERSION 0x01U
+#define V2_STATUS_BAD_STATE   0x02U
+#define V2_STATUS_BAD_CRC     0x03U
+#define FRAME_LEN             6U
+#define V2_TIMEOUT_MS         300U
 
 /* --------------------------------------------------------------------------
- * LED state buffer (6 LEDs: D0, D1, D2, REF, SEQ, PAR)
+ * LED state buffer (physical pins PA0..PA5; labels depend on protocol version)
  * -------------------------------------------------------------------------- */
-static volatile uint8_t led_d0, led_d1, led_d2, led_ref, led_seq, led_par;
+static volatile uint8_t current_led_mask;
+static volatile uint32_t system_ms;
+static uint32_t last_v2_frame_ms;
+static uint8_t v2_watchdog_active;
 
 /* --------------------------------------------------------------------------
  * Low-level helpers
@@ -145,33 +171,19 @@ static void usart1_putc(uint8_t c)
     USART1_DR = c;
 }
 
-/** Read a byte from USART1 (blocking). */
-static uint8_t usart1_getc(void)
-{
-    while (!(USART1_SR & USART_SR_RXNE)) { /* wait for RX not empty */ }
-    return (uint8_t)(USART1_DR & 0xFF);
-}
-
-/** Apply LED state to GPIOA output pins. */
-static void leds_apply(void)
+/** Apply a physical six-bit mask directly to PA0..PA5. */
+static void leds_apply_mask(uint8_t mask)
 {
     uint32_t odr = GPIOA_ODR & ~(PA0 | PA1 | PA2 | PA3 | PA4 | PA5);
-
-    if (led_d0)  odr |= PA0;
-    if (led_d1)  odr |= PA1;
-    if (led_d2)  odr |= PA2;
-    if (led_ref) odr |= PA3;
-    if (led_seq) odr |= PA4;
-    if (led_par) odr |= PA5;
-
+    odr |= ((uint32_t)mask & 0x3FU);
     GPIOA_ODR = odr;
+    current_led_mask = mask & 0x3FU;
 }
 
 /** Set all LEDs off. */
 static void leds_off(void)
 {
-    led_d0 = led_d1 = led_d2 = led_ref = led_seq = led_par = 0;
-    leds_apply();
+    leds_apply_mask(0U);
 }
 
 /**
@@ -184,30 +196,73 @@ static void leds_off(void)
  *   SEQ = seq & 1
  *   PAR = D0 ^ D1 ^ D2 ^ SEQ
  */
-static void leds_update(uint8_t msg_id, uint8_t seq)
+static void leds_update_legacy(uint8_t msg_id, uint8_t seq)
 {
-    led_d0  = (msg_id >> 0) & 1;
-    led_d1  = (msg_id >> 1) & 1;
-    led_d2  = (msg_id >> 2) & 1;
-    led_ref = (msg_id == 0) ? 0 : 1;
-    led_seq = seq & 1;
-    led_par = led_d0 ^ led_d1 ^ led_d2 ^ led_seq;
-    leds_apply();
+    uint8_t d0 = (msg_id >> 0) & 1U;
+    uint8_t d1 = (msg_id >> 1) & 1U;
+    uint8_t d2 = (msg_id >> 2) & 1U;
+    uint8_t ref = (msg_id == 0U) ? 0U : 1U;
+    uint8_t sequence = seq & 1U;
+    uint8_t parity = d0 ^ d1 ^ d2 ^ sequence;
+    leds_apply_mask(
+        d0 | (uint8_t)(d1 << 1U) | (uint8_t)(d2 << 2U) |
+        (uint8_t)(ref << 3U) | (uint8_t)(sequence << 4U) |
+        (uint8_t)(parity << 5U)
+    );
+}
+
+static uint8_t four_light_parity(uint8_t state_id)
+{
+    uint8_t value = state_id & 0x0FU;
+    value ^= (uint8_t)(value >> 2U);
+    value ^= (uint8_t)(value >> 1U);
+    return value & 1U;
+}
+
+static void leds_update_v2(uint8_t state_id)
+{
+    uint8_t mask = (uint8_t)((state_id & 0x0FU) | 0x10U);
+    if (four_light_parity(state_id) != 0U) {
+        mask |= 0x20U;
+    }
+    leds_apply_mask(mask);
 }
 
 /** Send a 3-byte ACK: CC msg_id seq. */
-static void send_ack(uint8_t msg_id, uint8_t seq)
+static void send_legacy_ack(uint8_t msg_id, uint8_t seq)
 {
-    usart1_putc(ACK_HEADER);
+    usart1_putc(LEGACY_ACK_HEADER);
     usart1_putc(msg_id);
     usart1_putc(seq);
+}
+
+static uint8_t crc8_atm(const uint8_t *data, uint8_t length)
+{
+    uint8_t crc = 0U;
+    for (uint8_t i = 0U; i < length; ++i) {
+        crc ^= data[i];
+        for (uint8_t bit = 0U; bit < 8U; ++bit) {
+            crc = (crc & 0x80U) ? (uint8_t)((crc << 1U) ^ 0x07U)
+                                : (uint8_t)(crc << 1U);
+        }
+    }
+    return crc;
+}
+
+static void send_v2_ack(uint8_t state_id, uint8_t counter, uint8_t status)
+{
+    uint8_t ack[FRAME_LEN] = {V2_ACK_HEADER, V2_VERSION, state_id, counter, status, 0U};
+    ack[5] = crc8_atm(ack, 5U);
+    for (uint8_t i = 0U; i < FRAME_LEN; ++i) {
+        usart1_putc(ack[i]);
+    }
 }
 
 /** Display a single message for self-test, with ACK. */
 static void self_test_one(uint8_t msg_id, uint8_t seq)
 {
-    leds_update(msg_id, seq);
-    send_ack(msg_id, seq);
+    leds_update_legacy(msg_id, seq);
+    send_legacy_ack(msg_id, seq);
 
     /* busy-wait ~250 ms at 8 MHz (very rough) */
     for (volatile uint32_t i = 0; i < 500000; i++) {
@@ -254,73 +309,75 @@ static void self_test(void)
  *   S4 → read brightness
  *   S5 → read checksum  →  validate  →  update LEDs + ACK  →  S0
  */
+static void process_legacy_frame(const uint8_t frame[FRAME_LEN])
+{
+    uint8_t msg_id = frame[2];
+    uint8_t seq = frame[3];
+    uint8_t brightness = frame[4];
+    if (msg_id <= 31U && seq <= 1U && frame[5] == (uint8_t)(msg_id ^ seq ^ brightness)) {
+        leds_update_legacy(msg_id, seq);
+        send_legacy_ack(msg_id, seq);
+    }
+}
+
+static void process_v2_frame(const uint8_t frame[FRAME_LEN])
+{
+    uint8_t state_id = frame[2];
+    uint8_t counter = frame[3];
+    uint8_t status = V2_STATUS_OK;
+
+    if (frame[1] != V2_VERSION) {
+        status = V2_STATUS_BAD_VERSION;
+    } else if (state_id > 15U) {
+        status = V2_STATUS_BAD_STATE;
+    } else if (frame[5] != crc8_atm(frame, 5U)) {
+        status = V2_STATUS_BAD_CRC;
+    }
+
+    if (status == V2_STATUS_OK) {
+        leds_update_v2(state_id);
+        last_v2_frame_ms = system_ms;
+        v2_watchdog_active = 1U;
+    }
+    send_v2_ack(state_id, counter, status);
+}
+
 static void frame_loop(void)
 {
-    uint8_t state = 0;
-    uint8_t msg_id = 0, seq = 0, brightness = 0, checksum = 0;
+    uint8_t frame[FRAME_LEN];
+    uint8_t frame_pos = 0U;
 
     for (;;) {
-        uint8_t c = usart1_getc();
-
-        switch (state) {
-        case 0: /* wait for header byte 0xAA */
-            if (c == FRAME_HEADER_0) {
-                state = 1;
-            }
-            /* else: stay in S0, discard byte */
-            break;
-
-        case 1: /* expect header byte 0x55 */
-            if (c == FRAME_HEADER_1) {
-                state = 2;
+        if ((USART1_SR & USART_SR_RXNE) != 0U) {
+            uint8_t byte = (uint8_t)(USART1_DR & 0xFFU);
+            if (frame_pos == 0U) {
+                if (byte == LEGACY_HEADER_0 || byte == V2_FRAME_HEADER) {
+                    frame[0] = byte;
+                    frame_pos = 1U;
+                }
+            } else if (frame_pos == 1U && frame[0] == LEGACY_HEADER_0 &&
+                       byte != LEGACY_HEADER_1) {
+                frame_pos = (byte == LEGACY_HEADER_0 || byte == V2_FRAME_HEADER) ? 1U : 0U;
+                if (frame_pos == 1U) {
+                    frame[0] = byte;
+                }
             } else {
-                /* If we see another 0xAA here, treat it as a new frame start.
-                 * Otherwise go back to hunting for 0xAA. */
-                state = (c == FRAME_HEADER_0) ? 1 : 0;
+                frame[frame_pos++] = byte;
+                if (frame_pos == FRAME_LEN) {
+                    if (frame[0] == LEGACY_HEADER_0) {
+                        process_legacy_frame(frame);
+                    } else {
+                        process_v2_frame(frame);
+                    }
+                    frame_pos = 0U;
+                }
             }
-            break;
+        }
 
-        case 2: /* msg_id */
-            msg_id = c;
-            if (msg_id > 31) {
-                /* Invalid msg_id → drop frame, hunt for next header */
-                state = 0;
-                break;
-            }
-            state = 3;
-            break;
-
-        case 3: /* seq */
-            seq = c;
-            if (seq > 1) {
-                state = 0;
-                break;
-            }
-            state = 4;
-            break;
-
-        case 4: /* brightness */
-            brightness = c;
-            state = 5;
-            break;
-
-        case 5: /* checksum */
-            checksum = c;
-            if (checksum == (uint8_t)(msg_id ^ seq ^ brightness)) {
-                /* Valid frame → update LEDs and send ACK */
-                leds_update(msg_id, seq);
-                send_ack(msg_id, seq);
-            }
-            /*
-             * If checksum fails: do NOT update LEDs, do NOT send ACK.
-             * Just silently drop the frame and go back to hunting.
-             */
-            state = 0;
-            break;
-
-        default:
-            state = 0;
-            break;
+        if (v2_watchdog_active != 0U &&
+            (uint32_t)(system_ms - last_v2_frame_ms) > V2_TIMEOUT_MS) {
+            leds_off();
+            v2_watchdog_active = 0U;
         }
     }
 }
@@ -410,6 +467,13 @@ static void usart1_init(void)
     USART1_CR1 = USART_CR1_TE | USART_CR1_RE | USART_CR1_UE;
 }
 
+static void systick_init(void)
+{
+    SYST_RVR = 7999U; /* 1 ms at 8 MHz */
+    SYST_CVR = 0U;
+    SYST_CSR = 0x07U; /* processor clock, interrupt, enable */
+}
+
 /* --------------------------------------------------------------------------
  * Entry point
  * -------------------------------------------------------------------------- */
@@ -419,6 +483,7 @@ int main(void)
     clock_init();
     gpio_init();
     usart1_init();
+    systick_init();
 
     /*
      * Power-on self-test:
@@ -454,13 +519,65 @@ int main(void)
 /* Stack top (end of 20 KB SRAM on STM32F103C8T6) */
 #define SRAM_END  0x20005000UL
 
-/* Minimal vector table — only stack pointer and reset handler */
+/*
+ * Linker-defined symbols from stm32f103c8.ld.
+ */
+extern uint32_t _sidata;
+extern uint32_t _sdata;
+extern uint32_t _edata;
+extern uint32_t _sbss;
+extern uint32_t _ebss;
+
+/* Forward declarations for exception handlers */
+void Reset_Handler(void);
+void NMI_Handler(void);
+void HardFault_Handler(void);
+void MemManage_Handler(void);
+void BusFault_Handler(void);
+void UsageFault_Handler(void);
+void SVC_Handler(void);
+void DebugMon_Handler(void);
+void PendSV_Handler(void);
+void SysTick_Handler(void);
+
+/* Core exception vectors, including SysTick for the V2 communication watchdog. */
 __attribute__((section(".vectors"), used))
 const uint32_t vector_table[] = {
-    SRAM_END,               /* initial stack pointer */
-    (uint32_t)main,         /* reset handler */
-    /* All other vectors default to 0 (unused in this application) */
+    SRAM_END,
+    (uint32_t)Reset_Handler,
+    (uint32_t)NMI_Handler,
+    (uint32_t)HardFault_Handler,
+    (uint32_t)MemManage_Handler,
+    (uint32_t)BusFault_Handler,
+    (uint32_t)UsageFault_Handler,
+    0U, 0U, 0U, 0U,
+    (uint32_t)SVC_Handler,
+    (uint32_t)DebugMon_Handler,
+    0U,
+    (uint32_t)PendSV_Handler,
+    (uint32_t)SysTick_Handler,
 };
+
+/*
+ * Reset_Handler is the hardware entry point called after reset.
+ * It copies .data and zeros .bss before handing control to main().
+ */
+void Reset_Handler(void)
+{
+    const uint32_t *source = &_sidata;
+    uint32_t *data = &_sdata;
+    while (data < &_edata) {
+        *data++ = *source++;
+    }
+
+    uint32_t *bss = &_sbss;
+    while (bss < &_ebss) {
+        *bss++ = 0U;
+    }
+    main();
+    /* main() never returns; loop here to satisfy the compiler */
+    for (;;) {}
+}
 
 /* Default handlers for unused exceptions / interrupts */
 void __attribute__((weak)) Default_Handler(void) { for (;;) {} }
@@ -472,4 +589,8 @@ void __attribute__((weak, alias("Default_Handler"))) UsageFault_Handler(void);
 void __attribute__((weak, alias("Default_Handler"))) SVC_Handler(void);
 void __attribute__((weak, alias("Default_Handler"))) DebugMon_Handler(void);
 void __attribute__((weak, alias("Default_Handler"))) PendSV_Handler(void);
-void __attribute__((weak, alias("Default_Handler"))) SysTick_Handler(void);
+
+void SysTick_Handler(void)
+{
+    system_ms++;
+}

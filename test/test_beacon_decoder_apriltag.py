@@ -15,7 +15,6 @@ from __future__ import annotations
 from unittest import mock
 
 import numpy as np
-import pytest
 
 from robocon_coop_comm.beacon_decoder_apriltag import AprilTagBeaconDecoder
 from robocon_coop_comm.beacon_types import BeaconFrame
@@ -278,7 +277,7 @@ class TestSeqTracking:
         assert d._last_msg_id is None
 
         img = np.full((480, 640), 220, dtype=np.uint8)
-        result = d.decode(_frame(img))
+        d.decode(_frame(img))
         assert d._last_msg_id is not None
         assert d._seq == 0  # still 0 (first frame initialises, doesn't toggle)
 

@@ -51,9 +51,9 @@ R2 摄像头识别
 | PA0 | → 电阻 → D0 LED 长脚，短脚 → GND |
 | PA1 | → 电阻 → D1 LED 长脚，短脚 → GND |
 | PA2 | → 电阻 → D2 LED 长脚，短脚 → GND |
-| PA3 | REF，预留 |
-| PA4 | SEQ，预留 |
-| PA5 | PAR，预留 |
+| PA3 | D3，状态 bit3 |
+| PA4 | REF，有效帧标志 |
+| PA5 | PAR，D0～D3 偶校验 |
 
 **串口接线：**
 

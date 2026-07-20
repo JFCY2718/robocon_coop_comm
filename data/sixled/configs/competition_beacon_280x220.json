@@ -1,0 +1,16 @@
+{
+  "board_width_mm": 280.0,
+  "board_height_mm": 220.0,
+  "tag_size_mm": 150.0,
+  "tag_center_mm": [-55.0, 0.0],
+  "led_centers_mm": {
+    "D0": [40.0, 70.0],
+    "D1": [80.0, 70.0],
+    "D2": [120.0, 70.0],
+    "D3": [40.0, 20.0],
+    "REF": [80.0, 20.0],
+    "PAR": [120.0, 20.0]
+  },
+  "led_cap_radius_mm": 11.2,
+  "roi_radius_scale": 0.65
+}

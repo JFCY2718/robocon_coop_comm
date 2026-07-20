@@ -5,14 +5,15 @@ ROBOCON 2026「武林探秘」R1/R2 两机协作通信项目。
 **通信方案：AprilTag 定位 + LED 二进制光码。**
 R1 通过 LED 光码板发出状态信号，R2 通过摄像头 + AprilTag 检测解码。
 
-> 📌 **当前状态（2026-06-22）**：
-> - ✅ 软件协议与状态机已完成 (634 tests passed)
+> 📌 **当前状态（2026-07-20）**：
+> - ✅ 软件协议、状态机与竞赛视觉增强已完成 (736 tests passed)
 > - ✅ STM32F103 + 三灯串口闭环已实机验证通过，ACK 正常
 > - ✅ STM32 六灯全部可点亮 (PA0-PA5)
 > - ✅ M3-1：Hikrobot 三灯识别已工程化
 > - ✅ M3-2：AprilTag 检测 + 透视矫正 + LED ROI 自动采样（软件）
 > - ✅ M3-3：R2 FSM HOLD/ERROR 安全门控
 > - ✅ M3-5：六灯 ROI 识别 + PatternMapper + 实时工具（软件）
+> - ✅ Round 4C：分位数/背景环/滞回解码、光流、最新帧和危险状态时间门控（软件）
 > - ✅ **Round FSM-A**：R1/R2 Mission FSM safety hardening
 >   - R2 FSM: confidence / staleness / local_estop guards
 >   - R1 FSM: ABORT 状态 + local_estop
@@ -87,7 +88,7 @@ pip install -e ".[dev,vision]"
 
 ```bash
 ./tools/test.sh
-# 期望：188+ passed
+# 期望：736 passed
 ```
 
 ### 4. 跑一个 demo 看看效果
@@ -128,7 +129,7 @@ python tools/r1_beacon_control.py --port /dev/ttyACM0 --command insert
 | STM32F103C8T6 (Blue Pill) | LED 光码 MCU，接收 USART1 串口帧 |
 | ST-LINK/V2.1 | 烧录器 + USB 虚拟串口 (VCP)，系统枚举为 `/dev/ttyACM0` |
 | 3× 高亮 LED + 限流电阻 | D0/D1/D2 **三灯信标（✅ 已实机验证）** |
-| 3× LED（REF/SEQ/PAR） | **六灯模式下一阶段扩展**（引脚 PA3/PA4/PA5 已预留） |
+| 3× LED（D3/REF/PAR） | **四数据灯 V2 扩展**（引脚 PA3/PA4/PA5） |
 | Hikrobot 相机 | 三灯识别 ✅ 已工程化（`HikrobotFrameProvider` + `ThreeLedRoiDecoder`） |
 
 ### 引脚接线
@@ -140,9 +141,9 @@ python tools/r1_beacon_control.py --port /dev/ttyACM0 --command insert
 | PA0 | → 电阻 → D0 LED 长脚，短脚 → GND |
 | PA1 | → 电阻 → D1 LED 长脚，短脚 → GND |
 | PA2 | → 电阻 → D2 LED 长脚，短脚 → GND |
-| PA3 | REF，预留 |
-| PA4 | SEQ，预留 |
-| PA5 | PAR，预留 |
+| PA3 | D3，状态 bit3 |
+| PA4 | REF，有效帧标志 |
+| PA5 | PAR，D0～D3 偶校验 |
 
 **串口（ST-LINK ↔ STM32）：**
 
@@ -222,7 +223,7 @@ robocon_coop_comm/
 │   │   ├── README.md                #   烧录/接线说明
 │   │   └── PROTOCOL.md              #   串口协议文档
 │   └── led_beacon_mcu/              # Arduino MCU 固件骨架（参考实现）
-├── test/                        # pytest 单元测试 (215+)
+├── test/                        # pytest 单元测试 (736)
 ├── docs/                        # 协议、架构、硬件文档
 ├── tools/                       # 开发/调试辅助脚本
 ├── .github/workflows/           # GitHub Actions CI
@@ -275,16 +276,50 @@ python tools/send_3led_msg.py --port /dev/ttyACM0 --msg-id 0 --seq 0 --brightnes
 
 # Round 4B：六灯自动化 expected-vs-observed 验证 🆕
 python tools/sixled_serial_sequence.py \
-  --port /dev/ttyACM0 --values 0,63,1,2,4,8,16,32 \
-  --hold-sec 5 --log data/sixled/logs/round4b_expected.csv
+  --protocol ascii --port /dev/ttyACM0 --values 0,63,1,2,4,8,16,32 \
+  --hold-sec 5 --refresh-sec 0.2 --log data/sixled/logs/round4b_expected.csv
+python tools/sixled_serial_sequence.py \
+  --protocol rscontrol2 --port COM3 --baud 115200 \
+  --values 0,63,1,2,4,8,16,32 --hold-sec 5 --refresh-sec 0.2 \
+  --log data/sixled/logs/round4b_expected_rscontrol2.csv
 python tools/sixled_expected_observed_check.py \
   --expected data/sixled/logs/round4b_expected.csv \
   --observed data/sixled/logs/round4b_t40_e12000.csv
+
+# sixled_serial_sequence.py defaults to --protocol ascii for the STM32F103
+# breadboard firmware ("63\n" style frames). Use --protocol rscontrol2 for
+# Rscontrol2 F407 0xBC frames: BC 00 mask seq 55. F407 camera tests should use
+# --hold-sec 5 --refresh-sec 0.2 because beacon timeout is 1000 ms.
+
+# Hikrobot 六灯固定 ROI（保持原路径）
+python3 tools/hikrobot_6led_live.py \
+  --roi-mode fixed --roi-file data/sixled/configs/site_roi.json \
+  --threshold 60 --exposure 8000 --gain 0 --timeout 5000 --protocol
+
+# Hikrobot AprilTag 动态六灯 ROI
+python3 tools/hikrobot_6led_live.py \
+  --roi-mode apriltag --tag-family tag36h11 --tag-id 0 --tag-size 0.150 \
+  --tag-min-margin 30 --tag-max-hamming 0 --roi-radius-scale 0.65 \
+  --tag-lost-frames 5 --threshold 60 --exposure 8000 --gain 0 --timeout 5000 \
+  --draw-tag --draw-dynamic-rois --protocol
+
+# 离线图片；不初始化 MVS SDK，也不打开相机
+python3 tools/hikrobot_6led_live.py \
+  --image sample.jpg --roi-mode apriltag --draw-tag --draw-dynamic-rois \
+  --output-image /tmp/apriltag_sixled_debug.jpg
+
+# pose 只有提供真实标定文件时才启用
+python3 tools/hikrobot_6led_live.py \
+  --roi-mode apriltag --camera-calibration camera_calibration.json --pose
 
 # Hikrobot 三灯实时解码（需相机 + SDK）
 python tools/hikrobot_3led_live.py
 python tools/hikrobot_3led_live.py --threshold 100 --log /tmp/beacon.csv
 ```
+
+AprilTag 六灯几何、安装尺寸、标定文件格式和现场验收步骤见
+[APRILTAG_SIXLED_VISION.md](docs/APRILTAG_SIXLED_VISION.md)。动态识别输出仍只是视觉事件，
+不能绕过 R2 本地传感器和任务状态机直接驱动执行机构。
 
 ### 交互控制台命令
 

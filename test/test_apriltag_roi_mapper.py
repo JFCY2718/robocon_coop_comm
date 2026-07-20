@@ -549,8 +549,6 @@ class TestIntegrationWithRoiDecoder:
 
     def test_mapper_perspective_with_synthetic_leds(self) -> None:
         """Perspective-distorted tag → project LEDs → verify they're in expected region."""
-        img = np.full((480, 640), 50, dtype=np.uint8)
-
         # Mild perspective (simulates camera at slight angle).
         corners = [
             (220.0, 90.0),  # tl

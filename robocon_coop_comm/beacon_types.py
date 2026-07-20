@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from enum import Enum as _Enum, auto as _auto
 
 from .protocol import MsgID
 
@@ -88,7 +89,7 @@ class BeaconEvent:
     def is_actionable(
         self,
         min_confidence: float = 0.7,
-        max_age_s: float = 2.0,
+        max_age_s: float = 0.3,
         now: float | None = None,
     ) -> bool:
         """Return True if this event meets confidence and staleness thresholds.
@@ -133,9 +134,6 @@ class BeaconEvent:
 # ---------------------------------------------------------------------------
 # ActionIntent — FSM output, NOT a hardware command
 # ---------------------------------------------------------------------------
-
-
-from enum import Enum as _Enum, auto as _auto
 
 
 class ActionIntent(_Enum):

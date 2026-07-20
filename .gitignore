@@ -5,6 +5,7 @@ __pycache__/
 build/
 dist/
 .venv/
+.deps/
 .pytest_cache/
 .ruff_cache/
 
@@ -22,6 +23,13 @@ log/
 # Local secrets
 .env
 *.key
+
+# STM32 firmware build artifacts
+firmware/**/*.elf
+firmware/**/*.bin
+firmware/**/*.hex
+firmware/**/*.map
+firmware/**/*.o
 
 # SixLED hardware test data — keep configs, ignore runtime artifacts
 data/sixled/logs/*

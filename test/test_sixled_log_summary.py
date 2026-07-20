@@ -42,8 +42,8 @@ from tools.sixled_log_summary import (
 _NEW_CSV_FIELDNAMES = [
     "timestamp", "msg_id", "seq", "valid", "confidence", "latency_ms",
     "pattern", "bitmask",
-    "D0", "D1", "D2", "REF", "SEQ", "PAR",
-    "D0_mean", "D1_mean", "D2_mean", "REF_mean", "SEQ_mean", "PAR_mean",
+    "D0", "D1", "D2", "D3", "REF", "PAR",
+    "D0_mean", "D1_mean", "D2_mean", "D3_mean", "REF_mean", "PAR_mean",
 ]
 
 
@@ -293,7 +293,7 @@ class TestOldBrokenCsv:
     def test_old_csv_summary_all_on(self) -> None:
         """Old broken CSV with all-on frames → LED ON ratio ~100%."""
         content = _old_broken_csv_content(20)  # 10 all-on, 10 all-off
-        import io, tempfile
+        import tempfile
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".csv", delete=False, newline=""
         ) as tmp:

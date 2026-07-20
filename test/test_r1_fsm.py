@@ -67,7 +67,7 @@ class TestEstop:
             if state == R1State.ERROR:
                 continue  # ERROR stays ERROR
             fsm = _fsm_at(state)
-            out = fsm.update(OperatorCommand.NEXT, _sensors(estop=True))
+            fsm.update(OperatorCommand.NEXT, _sensors(estop=True))
             assert fsm.state == R1State.ERROR, f"estop from {state} should → ERROR"
 
     def test_local_estop_forces_error(self) -> None:
@@ -88,7 +88,7 @@ class TestEstop:
             if state == R1State.ERROR:
                 continue
             fsm = _fsm_at(state)
-            out = fsm.update(OperatorCommand.NEXT, _sensors(local_estop=True))
+            fsm.update(OperatorCommand.NEXT, _sensors(local_estop=True))
             assert fsm.state == R1State.ERROR, f"local_estop from {state} should → ERROR"
 
 
@@ -181,7 +181,7 @@ class TestAbort:
 
     def test_reset_recover_from_abort(self) -> None:
         fsm = _fsm_at(R1State.ABORT)
-        out = fsm.update(OperatorCommand.RESET, R1Sensors())
+        fsm.update(OperatorCommand.RESET, R1Sensors())
         assert fsm.state == R1State.WAIT_START
 
 
@@ -357,7 +357,7 @@ class TestCommandEdgeCases:
 
     def test_next_from_wait_start_goes_to_pick_rod(self) -> None:
         fsm = R1MissionFSM()
-        out = fsm.update(OperatorCommand.NEXT, R1Sensors())
+        fsm.update(OperatorCommand.NEXT, R1Sensors())
         assert fsm.state == R1State.PICK_ROD
 
     def test_reset_from_init_is_idempotent(self) -> None:
@@ -391,7 +391,7 @@ class TestCannotBypassSensorGuard:
             rod_clamped=True, in_assembly_pose=True, rod_pose_locked=True,
             chassis_stopped=True, weapon_locked=True,
         )
-        out = fsm.update(OperatorCommand.NEXT, all_true)
+        fsm.update(OperatorCommand.NEXT, all_true)
         # Only ROD_CLAMPED gate fires → advances to ROD_CLAMPED
         assert fsm.state == R1State.ROD_CLAMPED
         # NOT INSERT_ALLOWED — must go through each stage

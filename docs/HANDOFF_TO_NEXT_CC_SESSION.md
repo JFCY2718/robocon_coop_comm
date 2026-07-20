@@ -17,6 +17,7 @@ python tools/hikrobot_6led_live.py --help
 python tools/sixled_log_summary.py --help
 python tools/sixled_serial_sequence.py --help
 python tools/sixled_expected_observed_check.py --help
+python tools/sixled_serial_sequence.py --protocol rscontrol2 --port COM3 --baud 115200 --values 0,63,1,2,4,8,16,32 --hold-sec 5 --refresh-sec 0.2 --log data/sixled/logs/round4b_expected_rscontrol2.csv
 ```
 
 ## 2. 当前仓库状态
@@ -107,12 +108,13 @@ export LD_LIBRARY_PATH=/opt/MVS/lib/64:/opt/MVS/bin:$LD_LIBRARY_PATH
 ## 6. 下一轮建议任务
 
 1. **继续 Round 4A**: 真实相机六灯 bitmask 稳定性测试（0x00→0x3F 全覆盖）
-2. **确定最终六灯比赛语义**: 当前 bitmask 语义仅作测试/示例
-3. **BeaconEvent 集成到视觉 pipeline**: 当前视觉 pipeline 用 `protocol.DecodedBeacon`，需要中间适配到 `BeaconEvent`
-4. **R2 FSM timeout 检测**: 长时间无消息应进入 HOLD
-5. **R2 FSM PRE_INSERT_READY 状态**: 定义但未使用，需决策是否保留
-6. **扩大 R2 FSM 状态覆盖**: MF（梅林）和 Battle（对抗区）阶段
-7. **R1 FSM 扩大状态覆盖**: 当前只有 MC/MF 基础状态
+2. **Rscontrol2 F407 direct drive**: use `tools/sixled_serial_sequence.py --protocol rscontrol2 --hold-sec 5 --refresh-sec 0.2`; the F407 beacon turns off after 1000 ms without a fresh valid 0xBC frame.
+3. **确定最终六灯比赛语义**: 当前 bitmask 语义仅作测试/示例
+4. **BeaconEvent 集成到视觉 pipeline**: 当前视觉 pipeline 用 `protocol.DecodedBeacon`，需要中间适配到 `BeaconEvent`
+5. **R2 FSM timeout 检测**: 长时间无消息应进入 HOLD
+6. **R2 FSM PRE_INSERT_READY 状态**: 定义但未使用，需决策是否保留
+7. **扩大 R2 FSM 状态覆盖**: MF（梅林）和 Battle（对抗区）阶段
+8. **R1 FSM 扩大状态覆盖**: 当前只有 MC/MF 基础状态
 
 ## 7. 禁止事项（本轮及之后）
 

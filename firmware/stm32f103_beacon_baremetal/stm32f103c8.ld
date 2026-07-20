@@ -1,5 +1,7 @@
 /* Minimal linker script for STM32F103C8T6 (64 KB Flash, 20 KB SRAM) */
 
+ENTRY(Reset_Handler)
+
 MEMORY
 {
     FLASH (rx)  : ORIGIN = 0x08000000, LENGTH = 64K
@@ -29,6 +31,7 @@ SECTIONS
         . = ALIGN(4);
         _edata = .;
     } > SRAM
+    _sidata = LOADADDR(.data);
 
     .bss :
     {

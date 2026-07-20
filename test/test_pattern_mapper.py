@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import json
 
-import numpy as np
 import pytest
 
 from robocon_coop_comm.pattern_mapper import (
@@ -24,7 +23,6 @@ from robocon_coop_comm.pattern_mapper import (
     LedPattern,
     PatternMapper,
 )
-from robocon_coop_comm.apriltag_roi_mapper import RoiPoint
 
 
 # ---------------------------------------------------------------------------
@@ -97,18 +95,18 @@ class TestPredefinedPatterns:
         assert p.name == "6led_horizontal"
         assert len(p.leds) == 6
         names = [led.name for led in p.leds]
-        assert names == ["REF", "D0", "D1", "D2", "SEQ", "PAR"]
+        assert names == ["D0", "D1", "D2", "D3", "REF", "PAR"]
 
     def test_6led_two_row(self) -> None:
         p = PATTERN_6LED_TWO_ROW
         assert p.name == "6led_two_row"
         assert len(p.leds) == 6
-        # Top row: REF, D0, D1 (y=0).
+        # Top row: D0, D1, D2 (y=0).
         top = [led for led in p.leds if led.y_mm == 0.0]
-        assert [led.name for led in top] == ["REF", "D0", "D1"]
-        # Bottom row: D2, SEQ, PAR (y=30).
+        assert [led.name for led in top] == ["D0", "D1", "D2"]
+        # Bottom row: D3, REF, PAR (y=30).
         bottom = [led for led in p.leds if led.y_mm == 30.0]
-        assert [led.name for led in bottom] == ["D2", "SEQ", "PAR"]
+        assert [led.name for led in bottom] == ["D3", "REF", "PAR"]
 
 
 # ---------------------------------------------------------------------------
@@ -271,7 +269,7 @@ class TestSerialisation:
         data = m.to_dict()
         m2 = PatternMapper.from_dict(data)
         assert m2.led_count == 6
-        assert m2.led_names == ["REF", "D0", "D1", "D2", "SEQ", "PAR"]
+        assert m2.led_names == ["D0", "D1", "D2", "D3", "REF", "PAR"]
 
     def test_to_dict_is_json_serialisable(self) -> None:
         m = PatternMapper(PATTERN_3LED_BELOW)

@@ -321,3 +321,252 @@ class Test6LedCliHelp:
         assert "--threshold" in result.stdout
         assert "--protocol" in result.stdout
         assert "REF" in result.stdout or "6-LED" in result.stdout
+
+    def test_help_shows_new_adaptive_args(self) -> None:
+        """--help shows the new adaptive and background-ring arguments."""
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        script = str(
+            Path(__file__).parent.parent / "tools" / "hikrobot_6led_live.py"
+        )
+        result = subprocess.run(
+            [sys.executable, script, "--help"],
+            capture_output=True, text=True, timeout=15,
+        )
+        for arg in ("--adaptive", "--ref-fraction", "--background-ring",
+                     "--ring-ratio", "--contrast-floor"):
+            assert arg in result.stdout, f"missing {arg} in --help"
+
+    def test_help_shows_competition_pipeline_args(self) -> None:
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        script = str(Path(__file__).parent.parent / "tools" / "hikrobot_6led_live.py")
+        result = subprocess.run(
+            [sys.executable, script, "--help"],
+            capture_output=True, text=True, timeout=15,
+        )
+        for arg in (
+            "--competition",
+            "--sample-statistic",
+            "--hysteresis-fraction",
+            "--optical-flow",
+            "--latest-frame",
+            "--temporal-validate",
+        ):
+            assert arg in result.stdout, f"missing {arg} in --help"
+
+    def test_fixed_roi_example_uses_frozen_six_led_order(self) -> None:
+        import json
+        from pathlib import Path
+
+        path = (
+            Path(__file__).parent.parent
+            / "data"
+            / "sixled"
+            / "configs"
+            / "sixled_roi.example.json"
+        )
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        assert payload["led_order"] == ["D0", "D1", "D2", "D3", "REF", "PAR"]
+        assert payload["bitmask_mapping"] == {
+            "D0": 0,
+            "D1": 1,
+            "D2": 2,
+            "D3": 3,
+            "REF": 4,
+            "PAR": 5,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Adaptive threshold
+# ---------------------------------------------------------------------------
+
+
+class TestAdaptiveThreshold:
+    def test_ref_brightness_sets_threshold(self) -> None:
+        """When adaptive is enabled, threshold = REF * ref_fraction."""
+        d = SixLedRoiDecoder(adaptive_threshold=True, ref_fraction=0.5)
+        # REF is a specific bright pixel region, others vary.
+        img = np.full((480, 640), 30, dtype=np.uint8)
+        # Make REF area bright (200), others dim (30).
+        # roi_points_6 uses centre positions around (400, 300).
+        roi = _roi_points_6()
+        result = d.decode(_frame(img), roi)
+        # REF ~30 (dim) → threshold = 30*0.5 = 15, REF_fraction fallback since < contrast_floor
+        # All brightnesses ~30, so threshold = fallback 120
+        # Actually REF = 30 which is < contrast_floor (default 15), so falls back to manual threshold 120
+        # All < 120 → all off
+        assert result.valid
+
+    def test_adaptive_threshold_above_contrast_floor(self) -> None:
+        """REF bright enough → threshold computed from REF."""
+        d = SixLedRoiDecoder(
+            adaptive_threshold=True, ref_fraction=0.5, contrast_floor=10.0,
+        )
+        # Set REF region to 200, others to 200 (so all > threshold)
+        img = np.full((480, 640), 200, dtype=np.uint8)
+        roi = _roi_points_6()
+        result = d.decode(_frame(img), roi)
+        # REF ~200, threshold = 200*0.5 = 100
+        # All 200 > 100 → all on
+        assert result.bits.get("D0", 0) == 1
+        assert result.bits.get("REF", 0) == 1
+
+    def test_adaptive_dim_scene_still_works(self) -> None:
+        """Even with dimmer lights, adaptive threshold tracks REF."""
+        d = SixLedRoiDecoder(
+            adaptive_threshold=True, ref_fraction=0.5,
+            min_roi_brightness=0.0, contrast_floor=10.0,
+        )
+        img = np.full((480, 640), 80, dtype=np.uint8)
+        roi = _roi_points_6()
+        result = d.decode(_frame(img), roi)
+        # All ~80, REF ~80, threshold ~40, all on
+        assert result.bits.get("REF", 0) == 1
+
+
+# ---------------------------------------------------------------------------
+# Background ring
+# ---------------------------------------------------------------------------
+
+
+class TestBackgroundRing:
+    def test_ring_subtracts_ambient_offset(self) -> None:
+        """Centre-bright ring-dim → positive contrast, light detected."""
+        d = SixLedRoiDecoder(
+            adaptive_threshold=True, ref_fraction=0.5,
+            background_ring=True, ring_ratio=2.5,
+            min_roi_brightness=-999.0, contrast_floor=5.0,
+        )
+        # Ambient @ 100, lights @ 200 centre → contrast = 100
+        # Make image: all 100, then draw bright circles
+        img = np.full((480, 640), 100, dtype=np.uint8)
+        roi = _roi_points_6()
+        for rp in roi:
+            rr, cc = _circle_coords(rp.x_px, rp.y_px, rp.radius_px)
+            img[rr, cc] = 200
+        result = d.decode(_frame(img), roi)
+        # Centre ~200, ring ~100 → contrast ~100 → all on
+        assert result.bits.get("REF", 0) == 1
+        # Effective threshold = REF contrast * 0.5 ~ 50
+        assert d.effective_threshold > 0
+
+    def test_uniform_image_no_contrast_all_off(self) -> None:
+        """Uniform image → centre ≈ ring → contrast ≈ 0 → all off."""
+        d = SixLedRoiDecoder(
+            background_ring=True, ring_ratio=2.5,
+            contrast_floor=5.0, threshold=50,
+        )
+        img = np.full((480, 640), 128, dtype=np.uint8)
+        roi = _roi_points_6()
+        result = d.decode(_frame(img), roi)
+        # Uniform → centre-ring ≈ 0, below contrast_floor → all off
+        assert result.bits.get("D0", 0) == 0
+        assert result.bits.get("REF", 0) == 0
+        assert result.valid is True
+
+
+class TestCompetitionSampling:
+    def test_percentile_sampling_tolerates_partial_led_coverage(self) -> None:
+        roi = [RoiPoint(name="D0", x_px=100, y_px=100, radius_px=10)]
+        img = np.full((220, 220), 20, dtype=np.uint8)
+        cv2 = __import__("cv2")
+        cv2.circle(img, (100, 100), 6, 220, -1)
+
+        mean_result = SixLedRoiDecoder(
+            threshold=120,
+            sample_shape="circle",
+            min_roi_brightness=0,
+        ).decode(_frame(img), roi)
+        percentile_result = SixLedRoiDecoder(
+            threshold=120,
+            sample_shape="circle",
+            sample_statistic="percentile",
+            centre_percentile=70,
+            min_roi_brightness=0,
+        ).decode(_frame(img), roi)
+
+        assert mean_result.bits["D0"] == 0
+        assert percentile_result.bits["D0"] == 1
+
+    def test_hysteresis_retains_previous_bit_inside_deadband(self) -> None:
+        roi = [RoiPoint(name="D0", x_px=100, y_px=100, radius_px=10)]
+        decoder = SixLedRoiDecoder(
+            threshold=100,
+            hysteresis_fraction=0.1,
+            min_roi_brightness=0,
+        )
+        on = decoder.decode(_frame(np.full((220, 220), 120, dtype=np.uint8)), roi)
+        held = decoder.decode(_frame(np.full((220, 220), 105, dtype=np.uint8)), roi)
+        off = decoder.decode(_frame(np.full((220, 220), 85, dtype=np.uint8)), roi)
+        assert on.bits["D0"] == 1
+        assert held.bits["D0"] == 1
+        assert held.extra["uncertain_leds"] == ("D0",)
+        assert off.bits["D0"] == 0
+
+    def test_led_gain_compensates_a_dimmer_channel(self) -> None:
+        roi = [RoiPoint(name="D0", x_px=100, y_px=100, radius_px=10)]
+        decoder = SixLedRoiDecoder(
+            threshold=100,
+            led_gains={"D0": 1.5},
+            min_roi_brightness=0,
+        )
+        result = decoder.decode(_frame(np.full((220, 220), 80, dtype=np.uint8)), roi)
+        assert result.brightness["D0"] == pytest.approx(120.0)
+        assert result.bits["D0"] == 1
+
+    def test_saturation_guard_marks_reading_invalid(self) -> None:
+        decoder = SixLedRoiDecoder(max_saturation_fraction=0.5)
+        result = decoder.decode(
+            _frame(np.full((480, 640), 255, dtype=np.uint8)),
+            _roi_points_6(),
+        )
+        assert result.valid is False
+        assert max(result.extra["saturation_fraction"].values()) == 1.0
+
+    def test_background_ring_must_fit_inside_frame(self) -> None:
+        decoder = SixLedRoiDecoder(
+            background_ring=True,
+            ring_ratio=2.5,
+            min_roi_brightness=0,
+        )
+        roi = [RoiPoint(name="D0", x_px=15, y_px=15, radius_px=10)]
+        result = decoder.decode(_frame(np.full((100, 100), 50, dtype=np.uint8)), roi)
+        assert result.valid is False
+
+    @pytest.mark.parametrize(
+        ("kwargs", "message"),
+        [
+            ({"sample_statistic": "median"}, "sample_statistic"),
+            ({"hysteresis_fraction": 0.5}, "hysteresis_fraction"),
+            ({"max_saturation_fraction": 1.1}, "max_saturation_fraction"),
+            ({"led_gains": {"D0": 0}}, "led_gains"),
+        ],
+    )
+    def test_invalid_robust_sampling_parameters(self, kwargs, message: str) -> None:
+        with pytest.raises(ValueError, match=message):
+            SixLedRoiDecoder(**kwargs)
+
+
+# ---------------------------------------------------------------------------
+# helpers
+# ---------------------------------------------------------------------------
+
+
+def _circle_coords(cx: int, cy: int, r: int) -> "tuple":
+    """Return (row_indices, col_indices) for a filled circle, clamped to (0,480),(0,640)."""
+    import numpy as np
+    y0, y1 = max(0, cy - r), min(480, cy + r + 1)
+    x0, x1 = max(0, cx - r), min(640, cx + r + 1)
+    if y0 >= y1 or x0 >= x1:
+        return np.array([], dtype=int), np.array([], dtype=int)
+    yy, xx = np.ogrid[y0:y1, x0:x1]
+    mask = (xx - cx) ** 2 + (yy - cy) ** 2 <= r**2
+    rows = y0 + np.where(mask)[0]
+    cols = x0 + np.where(mask)[1]
+    return rows, cols

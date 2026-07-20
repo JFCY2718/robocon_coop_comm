@@ -1,6 +1,29 @@
 # STM32F103 LED Beacon 串口协议
 
-## 请求帧（R1 主控 → MCU）
+## 四信号灯 V2（当前生产方案）
+
+```text
+R1 -> Beacon: BD 02 state_id counter brightness crc8
+Beacon -> R1: BE 02 state_id counter status crc8
+```
+
+- `state_id`：0～15，对应 D0～D3。
+- `counter`：逐帧递增，用于ACK匹配。
+- `brightness`：当前仍保留，不做PWM。
+- `crc8`：CRC-8/ATM，poly `0x07`、初值 `0x00`，覆盖前5字节。
+- `status`：0正常，1版本错误，2状态错误，3 CRC错误。
+- 300 ms没有收到合法V2帧时，Beacon将六灯全部关闭。
+
+V2物理顺序：
+
+```text
+PA0=D0 PA1=D1 PA2=D2 PA3=D3 PA4=REF PA5=PAR
+PAR = D0 XOR D1 XOR D2 XOR D3
+```
+
+下面的 `AA 55` 协议为历史兼容模式，帧格式和ACK保持不变。
+
+## 历史兼容请求帧（R1 主控 → MCU）
 
 ```
 Byte:  0     1     2       3    4          5

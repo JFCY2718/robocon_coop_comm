@@ -1,0 +1,11 @@
+{
+  "description": "Replace these values with measured per-channel REF-normalised gains.",
+  "led_gains": {
+    "D0": 1.0,
+    "D1": 1.0,
+    "D2": 1.0,
+    "D3": 1.0,
+    "REF": 1.0,
+    "PAR": 1.0
+  }
+}

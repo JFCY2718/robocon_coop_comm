@@ -169,7 +169,7 @@ python -m robocon_coop_comm.demo_cv
 
 ## 6-LED 实测 (smoke test)
 
-6-LED 模式使用全部六颗 LED：D0, D1, D2, REF, SEQ, PAR。
+当前 6-LED 生产模式使用：D0, D1, D2, D3, REF, PAR。历史三灯/八灯协议章节仍保留用于兼容测试。
 
 ### 前置条件
 
@@ -180,7 +180,7 @@ python -m robocon_coop_comm.demo_cv
 ### LED 顺序与 bitmask 映射
 
 ```
-点击顺序:  D0  D1  D2  REF  SEQ  PAR
+点击顺序:  D0  D1  D2  D3  REF  PAR
 bit 位:    bit0 bit1 bit2 bit3 bit4 bit5
 ```
 
@@ -196,14 +196,14 @@ bit 位:    bit0 bit1 bit2 bit3 bit4 bit5
 #    D0 亮 → 000001 = 0x01
 #    D1 亮 → 000010 = 0x02
 #    D2 亮 → 000100 = 0x04
-#    REF 亮 → 001000 = 0x08
-#    SEQ 亮 → 010000 = 0x10
+#    D3 亮  → 001000 = 0x08
+#    REF 亮 → 010000 = 0x10
 #    PAR 亮 → 100000 = 0x20
 
 # 5. 启动六灯实时工具 (交互式标定)
 python tools/hikrobot_6led_live.py
 
-# 6. 按顺序点击 D0 D1 D2 REF SEQ PAR LED 中心位置
+# 6. 按顺序点击 D0 D1 D2 D3 REF PAR LED 中心位置
 #    观察 bitmask 和 bit value 是否与预期一致
 
 # 7. 保存 ROI 标定
@@ -244,8 +244,8 @@ CSV 日志 header 与数据列完全对齐（20 列）：
 ```text
 timestamp,msg_id,seq,valid,confidence,latency_ms,
 pattern,bitmask,
-D0,D1,D2,REF,SEQ,PAR,
-D0_mean,D1_mean,D2_mean,REF_mean,SEQ_mean,PAR_mean
+D0,D1,D2,D3,REF,PAR,
+D0_mean,D1_mean,D2_mean,D3_mean,REF_mean,PAR_mean
 ```
 
 | 字段 | 说明 |
@@ -269,7 +269,7 @@ D0_mean,D1_mean,D2_mean,REF_mean,SEQ_mean,PAR_mean
 
 | 按键 | 功能 |
 |------|------|
-| 鼠标左键点击 | 依次设定 D0 → D1 → D2 → REF → SEQ → PAR |
+| 鼠标左键点击 | 依次设定 D0 → D1 → D2 → D3 → REF → PAR |
 | `s` | 保存当前 ROI 到 `--save-roi` 路径 |
 | `+` / `=` | 阈值 +5 |
 | `-` | 阈值 -5 |
@@ -431,11 +431,23 @@ python tools/hikrobot_6led_live.py \
 
 ```bash
 python tools/sixled_serial_sequence.py \
-  --port /dev/ttyACM0 --baud 115200 \
+  --protocol ascii --port /dev/ttyACM0 --baud 115200 \
   --values 0,63,1,2,4,8,16,32 \
-  --hold-sec 5 --warmup-sec 2 \
+  --hold-sec 5 --refresh-sec 0.2 --warmup-sec 2 \
   --log data/sixled/logs/round4b_expected.csv
 ```
+
+For Rscontrol2 F407 firmware, send the 0xBC beacon frame directly:
+
+```bash
+python tools/sixled_serial_sequence.py \
+  --protocol rscontrol2 --port COM3 --baud 115200 \
+  --values 0,63,1,2,4,8,16,32 \
+  --hold-sec 5 --refresh-sec 0.2 --warmup-sec 2 \
+  --log data/sixled/logs/round4b_expected_rscontrol2.csv
+```
+
+`ascii` sends decimal newline frames such as `"63\n"` for the STM32F103 breadboard test firmware. `rscontrol2` sends `BC 00 mask seq 55`; refresh is required because the F407 beacon timeout is 1000 ms.
 
 **Step 3**：运行 checker 比对
 

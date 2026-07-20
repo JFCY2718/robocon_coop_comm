@@ -902,22 +902,22 @@ class TestAllMsgIdsFromWaitR1:
         """Messages with explicit WAIT_R1 handlers."""
         fsm = R2MissionFSM()
         # R1_ROD_CLAMPED → PREPARE_HEAD
-        out = fsm.update(_beacon(MsgID.R1_ROD_CLAMPED, 0), R2Sensors())
+        fsm.update(_beacon(MsgID.R1_ROD_CLAMPED, 0), R2Sensors())
         assert fsm.state == R2State.PREPARE_HEAD
 
         # HOLD → HOLD
         fsm2 = R2MissionFSM()
-        out2 = fsm2.update(_beacon(MsgID.HOLD, 0), R2Sensors())
+        fsm2.update(_beacon(MsgID.HOLD, 0), R2Sensors())
         assert fsm2.state == R2State.HOLD
 
         # ERROR → ERROR
         fsm3 = R2MissionFSM()
-        out3 = fsm3.update(_beacon(MsgID.ERROR, 0), R2Sensors())
+        fsm3.update(_beacon(MsgID.ERROR, 0), R2Sensors())
         assert fsm3.state == R2State.ERROR
 
         # ABORT_CURRENT_TASK → HOLD
         fsm4 = R2MissionFSM()
-        out4 = fsm4.update(_beacon(MsgID.ABORT_CURRENT_TASK, 0), R2Sensors())
+        fsm4.update(_beacon(MsgID.ABORT_CURRENT_TASK, 0), R2Sensors())
         assert fsm4.state == R2State.HOLD
 
     def test_unhandled_msgs_from_wait_r1_stay_wait_r1(self) -> None:
@@ -1007,7 +1007,7 @@ class TestPreInsertReady:
 
     def test_hold_from_pre_insert_ready_works(self) -> None:
         fsm = _fsm_at(R2State.PRE_INSERT_READY)
-        out = fsm.update(_beacon(MsgID.HOLD, 0), R2Sensors())
+        fsm.update(_beacon(MsgID.HOLD, 0), R2Sensors())
         assert fsm.state == R2State.HOLD
 
 
@@ -1027,12 +1027,12 @@ class TestHeadReleased:
 
     def test_hold_from_head_released(self) -> None:
         fsm = _fsm_at(R2State.HEAD_RELEASED)
-        out = fsm.update(_beacon(MsgID.HOLD, 0), R2Sensors())
+        fsm.update(_beacon(MsgID.HOLD, 0), R2Sensors())
         assert fsm.state == R2State.HOLD
 
     def test_error_from_head_released(self) -> None:
         fsm = _fsm_at(R2State.HEAD_RELEASED)
-        out = fsm.update(_beacon(MsgID.ERROR, 0), R2Sensors())
+        fsm.update(_beacon(MsgID.ERROR, 0), R2Sensors())
         assert fsm.state == R2State.ERROR
 
     def test_irrelevant_msg_from_head_released_no_effect(self) -> None:
@@ -1058,7 +1058,7 @@ class TestWaitR1ClearMc:
 
     def test_hold_from_wait_r1_clear_mc(self) -> None:
         fsm = _fsm_at(R2State.WAIT_R1_CLEAR_MC)
-        out = fsm.update(_beacon(MsgID.HOLD, 0), R2Sensors())
+        fsm.update(_beacon(MsgID.HOLD, 0), R2Sensors())
         assert fsm.state == R2State.HOLD
 
     def test_weapon_locked_from_wait_r1_clear_mc_is_gated(self) -> None:
@@ -1085,12 +1085,12 @@ class TestTerminalStates:
 
     def test_ready_to_enter_mf_hold_works(self) -> None:
         fsm = _fsm_at(R2State.READY_TO_ENTER_MF)
-        out = fsm.update(_beacon(MsgID.HOLD, 0), R2Sensors())
+        fsm.update(_beacon(MsgID.HOLD, 0), R2Sensors())
         assert fsm.state == R2State.HOLD
 
     def test_ready_to_enter_mf_error_works(self) -> None:
         fsm = _fsm_at(R2State.READY_TO_ENTER_MF)
-        out = fsm.update(_beacon(MsgID.ERROR, 0), R2Sensors())
+        fsm.update(_beacon(MsgID.ERROR, 0), R2Sensors())
         assert fsm.state == R2State.ERROR
 
 
@@ -1529,12 +1529,12 @@ class TestStaleBeacon:
             confidence = 0.9
             timestamp = None
 
-        out = fsm.update(_MockBeacon(), R2Sensors())
+        fsm.update(_MockBeacon(), R2Sensors())
         assert fsm.state == R2State.PREPARE_HEAD  # accepted
 
-    def test_default_max_age_is_2_seconds(self) -> None:
+    def test_default_max_age_is_300_ms(self) -> None:
         fsm = R2MissionFSM()
-        assert fsm.max_age_s == 2.0
+        assert fsm.max_age_s == 0.3
 
     def test_custom_max_age(self) -> None:
         fsm = R2MissionFSM(max_age_s=5.0)
@@ -1551,7 +1551,7 @@ class TestStaleBeacon:
             confidence = 0.9
             timestamp = 0.0  # ancient
 
-        out = fsm.update(_MockBeacon(), R2Sensors())
+        fsm.update(_MockBeacon(), R2Sensors())
         assert fsm.state == R2State.PREPARE_HEAD  # accepted (staleness disabled)
 
     def test_stale_beacon_does_not_override_estop(self) -> None:

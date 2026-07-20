@@ -19,7 +19,11 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from robocon_coop_comm.sixled_log import (
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from robocon_coop_comm.sixled_log import (  # noqa: E402
     LED_NAMES,
     normalise_row,
     read_csv,
